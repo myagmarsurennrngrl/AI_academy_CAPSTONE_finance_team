@@ -45,8 +45,9 @@ def test_correlations_return_expected_fields():
     d = prepare_derived_frame(_df())
     correlations = compute_correlations(d)
     fields = {c["field"] for c in correlations}
-    assert "qty" in fields
+    assert "qty" not in fields  # quantity is the target, never a driver of itself
     assert "sale_price" in fields
+    assert "stock_available" in fields
     for c in correlations:
         assert c["n"] > 0
 

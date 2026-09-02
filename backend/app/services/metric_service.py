@@ -72,6 +72,12 @@ def compute_kpis(df: pd.DataFrame) -> KpiSummary:
         threshold = stock[stock > 0].quantile(LOW_STOCK_QUANTILE) if (stock > 0).any() else 0
         low_stock_count = int(((stock > 0) & (stock <= threshold)).sum())
 
+    volume_units = float(d["volume_units"].sum()) if "volume_units" in d.columns else net_units
+    sell_out_units = float(d["sell_out_units"].sum()) if "sell_out_units" in d.columns else net_units
+    sell_in_units = float(d["sell_in_units"].sum()) if "sell_in_units" in d.columns else 0.0
+    shipment_rows = int(d["is_shipment"].sum()) if "is_shipment" in d.columns else 0
+    pos_rows = int(len(d) - shipment_rows)
+
     return KpiSummary(
         gross_sales=gross_sales,
         net_sales=net_sales,
@@ -94,6 +100,11 @@ def compute_kpis(df: pd.DataFrame) -> KpiSummary:
         avg_stock_available=avg_stock,
         low_stock_sku_count=low_stock_count,
         stockout_observations=stockout_count,
+        volume_units=volume_units,
+        sell_out_units=sell_out_units,
+        sell_in_units=sell_in_units,
+        pos_row_count=pos_rows,
+        shipment_row_count=shipment_rows,
     )
 
 

@@ -15,6 +15,7 @@ import pandas as pd
 
 from app.models.schemas import AutoCorrection, DataQualityIssue, DataQualityReport
 from app.utils.column_mapping import REQUIRED_CORE_FIELDS, RECOMMENDED_DRIVER_FIELDS
+from app.utils.sales_type import POS, SHIPMENT, normalize_sales_type
 
 NUMERIC_FIELDS = [
     "qty",
@@ -87,6 +88,36 @@ def validate_and_clean(
             AutoCorrection(field=None, action="Trimmed whitespace on text fields", affected_rows=trimmed_count)
         )
 
+    # --- sales type vocabulary: POS (sell-out) vs SHIPMENT (sell-in) ---
+    if "sales_type" in clean.columns:
+        original = clean["sales_type"].copy()
+        normalized = original.map(normalize_sales_type)
+        present = original.notna()
+        changed = int((present & (original.astype(str).str.strip() != normalized.astype(str))).sum())
+        clean["sales_type"] = normalized
+        if changed:
+            corrections.append(
+                AutoCorrection(
+                    field="sales_type",
+                    action="Standardised sales-type labels to POS (sell-out) / SHIPMENT (sell-in)",
+                    affected_rows=changed,
+                )
+            )
+        unrecognised = normalized[present & ~normalized.isin([POS, SHIPMENT])]
+        if len(unrecognised):
+            labels = ", ".join(sorted(set(unrecognised.astype(str)))[:5])
+            issues.append(
+                DataQualityIssue(
+                    severity="info",
+                    field="sales_type",
+                    message=(
+                        f"{len(unrecognised)} rows have a sales_type not recognised as POS or Shipment "
+                        f"({labels}); they are treated as sell-out."
+                    ),
+                    affected_rows=int(len(unrecognised)),
+                )
+            )
+
     # --- duplicate rows ---
     duplicate_mask = clean.duplicated(keep="first")
     duplicate_rows = int(duplicate_mask.sum())
@@ -110,7 +141,10 @@ def validate_and_clean(
                 DataQualityIssue(
                     severity="error",
                     field="date",
-                    message=f"{invalid_dates} rows have a date value that could not be parsed.",
+                    message=(
+                        f"{invalid_dates} rows have a date value that could not be parsed; "
+                        "they are excluded from the analytics dataset."
+                    ),
                     affected_rows=int(invalid_dates),
                 )
             )

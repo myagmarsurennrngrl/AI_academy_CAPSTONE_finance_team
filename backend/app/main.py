@@ -3,7 +3,7 @@ business logic lives in app/services/ - this file only wires them together."""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import analysis, upload
+from app.api.routes import analysis, dataset, upload
 from app.config import get_settings
 
 settings = get_settings()
@@ -11,7 +11,7 @@ settings = get_settings()
 app = FastAPI(
     title="Sales Driver Intelligence API",
     description="Excel-driven sales driver analysis: deterministic KPIs + Claude/OpenAI insight generation.",
-    version="1.0.0",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -23,6 +23,7 @@ app.add_middleware(
 )
 
 app.include_router(upload.router)
+app.include_router(dataset.router)
 app.include_router(analysis.router)
 
 

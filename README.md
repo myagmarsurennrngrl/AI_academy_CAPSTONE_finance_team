@@ -1,79 +1,87 @@
 # Sales Driver Intelligence
-### Борлуулалтад нөлөөлөх хүчин зүйлийн шинжилгээ
+### Борлуулалтын хүчин зүйлийн шинжилгээ · Sales Driver Intelligence Platform
 
-A capstone web application that turns an uploaded Excel sales dataset into a management-ready
-analysis: deterministic Python KPI/driver statistics, a Claude-generated English business
-analysis, and an OpenAI-translated professional Mongolian version.
+Upload an Excel sales dataset and get a management-ready, filterable analysis: deterministic
+Python KPIs and driver statistics, a Claude-generated English narrative, and an OpenAI
+Mongolian translation - presented as a five-level data story (What → When → Where → Why → So what).
 
-> AI_academy_CAPSTONE_finance_team — a group capstone project applying AI to real finance
+> AI_academy_CAPSTONE_finance_team - a group capstone project applying AI to real finance
 > workflows and data.
 
-## Architecture
+## How it works
 
 ```
-Excel Upload
-      |
-Validation (app/services/validation_service.py)
-      |
-Data Cleaning (auto-corrections, reported - never silently dropped)
-      |
-Python KPI Calculation (app/services/metric_service.py)
-      |
-Sales Driver Statistical Analysis (app/services/driver_service.py)
-      |
-Compact structured JSON (app/services/compact_payload.py)
-      |
-Claude Fable 5 -> English business analysis (app/services/anthropic_service.py)
-      |
-OpenAI -> professional Mongolian translation (app/services/openai_service.py)
-      |
-Final Dashboard (Next.js)
+Excel upload ──► parse + validate + clean (pandas)
+                 │
+                 ├─► GET  /api/dataset/{id}            cleaned row-level dataset (columnar JSON)
+                 │        └─► browser: ONE filtered slice ─► every KPI, chart, table
+                 │
+                 ├─► POST /api/analysis/{id}/drivers   same filter ─► correlations, model importance
+                 │
+                 └─► POST /api/analysis/{id}/insight   same filter ─► compact JSON ─► Claude (EN) ─► OpenAI (MN)
 ```
 
-Python always computes the numbers (KPIs, correlations, group contributions, the driver
-model). Claude only interprets the already-computed numbers - it never recalculates them.
-OpenAI only translates Claude's finished English analysis into Mongolian - it never
-re-analyzes the dataset or changes a conclusion.
+**One source of truth for filtering.** The dashboard receives the cleaned, derived dataset once
+and filters it in the browser (`frontend/lib/filters.ts`). KPIs, trend, breakdowns, scatter,
+stock, discount and promotion panels are all derived from that single filtered array
+(`frontend/lib/analytics.ts`, memoised in `hooks/useAnalytics.ts`). The two server-side
+analyses (driver model, AI narrative) receive the identical `FilterSpec` and apply it with the
+same semantics (`backend/app/services/dataset_service.apply_filters`). The AI narrative is
+tagged with the scope it was generated for and flagged as stale when filters change.
 
-- **Frontend**: Next.js 14 (App Router) + TypeScript + Tailwind CSS + Recharts + lucide-react
-- **Backend**: FastAPI + pandas + numpy + scikit-learn + scipy + pydantic + openpyxl
-- **AI**: Anthropic API (`claude-fable-5`) for analysis, OpenAI Responses API
-  (`gpt-5.6-terra`) for Mongolian translation - both configurable via `.env`
+**Python computes every number; AI only interprets.** Claude receives aggregated, Top-N-limited
+JSON (never raw rows) plus an `analysis_scope` block describing the active filters. OpenAI
+only translates Claude's finished analysis.
 
-## Requirements
+**Sell-out and sell-in are different concepts.** `sales_type` values are normalised to
+`POS` (sell-out) or `SHIPMENT` (sell-in). Sales quantity (`volume_units`) is `qty − return_qty`
+for POS rows and **net shipment = `shipment_qty − return_qty`** for shipment rows. The two are
+shown side by side and never summed into one undifferentiated figure.
 
-- Node.js 18+
-- Python 3.11+
-- An Anthropic API key (or `USE_MOCK_AI=true` for free local testing)
-- An OpenAI API key (or `USE_MOCK_AI=true`)
+## Stack
+
+- **Frontend**: Next.js 14 (App Router) · TypeScript · Tailwind CSS · Recharts · lucide-react
+- **Backend**: FastAPI · pandas · numpy · scikit-learn · scipy · pydantic · openpyxl
+- **AI**: Anthropic API (`claude-fable-5`) for analysis, OpenAI Responses API (`gpt-5.6-terra`)
+  for Mongolian translation - both configurable via `.env`, both mockable (`USE_MOCK_AI=true`)
 
 ## Project layout
 
 ```
 backend/
   app/
-    main.py                     FastAPI app wiring (CORS, routers)
-    config.py                   Settings loaded from .env
-    api/routes/                 upload.py, analysis.py
-    services/                   excel/validation/metric/driver/anthropic/openai services
-    models/schemas.py           Pydantic schemas (mirrors frontend/types/index.ts)
-    prompts/                    sales_analysis_prompt.py, mongolian_translation_prompt.py
-    utils/                      column_mapping.py, derive.py, formatting.py
-    static/sample_data.xlsx     Downloadable sample dataset
-  tests/                        pytest suite (external APIs mocked)
-  requirements.txt
+    main.py                        FastAPI wiring (CORS, routers)
+    config.py                      Settings from .env
+    api/routes/                    upload.py · dataset.py · analysis.py
+    services/
+      excel_service.py             read workbook, map columns, profile
+      validation_service.py        clean + data-quality report (never silently drops rows)
+      dataset_service.py           analytics frame, columnar payload, apply_filters (shared filter semantics)
+      metric_service.py            KPIs incl. sell-out / sell-in split
+      driver_service.py            correlations, eta², Ridge/RandomForest, permutation importance, ranking
+      analysis_pipeline.py         orchestration: prepare · dataset · drivers · insight
+      compact_payload.py           Top-N JSON sent to Claude (with analysis_scope)
+      anthropic_service.py · openai_service.py · mock_ai.py · session_store.py
+    utils/                         column_mapping.py · sales_type.py · derive.py · formatting.py
+    models/schemas.py              Pydantic schemas (mirrored in frontend/types/index.ts)
+  tests/                           42 pytest tests (external APIs mocked)
 
 frontend/
-  app/                          page.tsx (single-flow dashboard), layout.tsx, globals.css
+  app/                             page.tsx (upload → dashboard), layout.tsx, globals.css, icon.svg
   components/
-    upload/                     FileUpload, ExcelRequirementCard
-    analysis/                   AnalysisProgress
-    dashboard/                  KpiCard, DataQualityPanel, AIInsightPanel, RecommendationCard, ProductTable, OverviewTab
-    charts/                     DriverChart, SalesTrendChart, ChannelChart, DiscountChart, PromotionComparison
-    ui/                         hand-built shadcn-style primitives (button, card, tabs, table, badge, progress, tooltip)
-    common/                     ProcessSteps, Disclaimer
-  lib/                          api.ts, format.ts, chartColors.ts, utils.ts
-  types/index.ts                TypeScript interfaces mirroring the backend schemas
+    upload/UploadScreen.tsx        drop zone, file summary, validation, column guide
+    filters/                       FilterBar · MultiSelect (searchable) · DateRangeFilter (presets)
+    dashboard/                     Dashboard (story orchestration) · Kpis · SectionHeader
+    charts/                        ChartFrame (insight title + table twin) · TrendChart · VarianceBars ·
+                                   RankedBars · SalesTypeSplit · PriceQuantityScatter ·
+                                   DriverImportanceChart · StockSalesChart · PricingPanels
+    insight/ExecutiveInsight.tsx   deterministic findings + AI narrative (scope-aware, MN/EN)
+    appendix/Appendix.tsx          returns & inventory · data quality · model details
+    ui/primitives.tsx              Button, Surface, Badge, Segmented, InfoTip, Table, Tabs, states
+    providers/LocaleProvider.tsx   MN / EN
+  hooks/                           useDataset · useFilters · useAnalytics · useDriverAnalysis · useInsight
+  lib/                             filters · analytics · narrative (data-driven headlines) · format · i18n · api · chartTheme
+  types/index.ts
 ```
 
 ## Installation
@@ -83,13 +91,9 @@ frontend/
 ```bash
 cd backend
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
-
+# Windows: .venv\Scripts\activate    macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-cp ../.env.example .env   # then fill in your keys, or set USE_MOCK_AI=true
+cp ../.env.example .env            # fill in keys, or set USE_MOCK_AI=true
 ```
 
 ### Frontend
@@ -99,108 +103,91 @@ cd frontend
 npm install
 ```
 
-## Environment variables
-
-Copy `.env.example` to `backend/.env` and fill in:
+## Environment variables (`backend/.env`)
 
 | Variable | Description |
 |---|---|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key. Required unless `USE_MOCK_AI=true`. |
+| `ANTHROPIC_API_KEY` | Anthropic API key. Required unless `USE_MOCK_AI=true`. |
 | `ANTHROPIC_MODEL` | Defaults to `claude-fable-5`. |
-| `OPENAI_API_KEY` | Your OpenAI API key. Required unless `USE_MOCK_AI=true`. |
+| `OPENAI_API_KEY` | OpenAI API key (Mongolian translation). Required unless `USE_MOCK_AI=true`. |
 | `OPENAI_MODEL` | Defaults to `gpt-5.6-terra`. |
-| `USE_MOCK_AI` | `true` to skip both AI calls and return realistic mock output built from your real uploaded data - free, offline UI testing. |
+| `USE_MOCK_AI` | `true` → both AI stages return realistic mock output built from the real numbers. Free, offline. |
+| `USE_OPENAI_FOR_ANALYSIS` | Stopgap only: OpenAI performs both stages, bypassing Anthropic. |
+| `ANTHROPIC_WORKSPACE_ID` | Only for identity-linked keys that require an `anthropic-workspace-id` header. |
 | `MAX_UPLOAD_MB` | Upload size limit (default 15). |
-| `CORS_ORIGINS` | Comma-separated list of frontend origins allowed to call the API (default `http://localhost:3000`). |
-| `USE_OPENAI_FOR_ANALYSIS` | Temporary stopgap only (default `false`): when `true`, OpenAI performs both the English analysis and the Mongolian translation, bypassing Anthropic. Use only if Anthropic access is unavailable. |
-| `ANTHROPIC_WORKSPACE_ID` | Only needed if your Anthropic key is an "identity-linked" key that errors with `anthropic-workspace-id is required...`. Find it at platform.claude.com/settings/workspaces (a `wrkspc_...` id). |
+| `CORS_ORIGINS` | Allowed frontend origins (default `http://localhost:3000`). |
 
-API keys are read only on the backend and are never sent to the browser.
-
-Optionally, create `frontend/.env.local` with `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`
-if your backend runs somewhere other than `localhost:8000` (this is the default, so it's not
-required for the standard local setup).
+Keys are read only on the backend and never sent to the browser. Optionally set
+`NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local` if the backend is not on `localhost:8000`.
 
 ## Running locally
 
-Terminal 1 - backend (http://localhost:8000):
-
 ```bash
-cd backend
-.venv\Scripts\activate   # or: source .venv/bin/activate
-uvicorn app.main:app --reload --port 8000
+# Terminal 1 - backend
+cd backend && uvicorn app.main:app --reload --port 8000
+
+# Terminal 2 - frontend
+cd frontend && npm run dev          # http://localhost:3000
 ```
 
-Terminal 2 - frontend (http://localhost:3000):
+1. Drop an `.xlsx` (or download the sample). The file is parsed, validated and profiled in about
+   a second - rows, period, months, brands, products, channels, recognised / missing columns.
+2. **Open dashboard.** KPIs and charts appear immediately from the row-level dataset; the driver
+   model loads in the background; the AI narrative is generated once for the full dataset.
+3. Filter by **Period · Brand · Product · Channel · Channel type · Sales type**. Every KPI, chart
+   and table updates from the same slice; active filters are shown as chips with a
+   **Reset filters** action. Product options narrow to the selected brands without dropping
+   existing selections.
+4. Comparison basis: **Last year** (same period, requires a period ≤ 12 months with LY data) or
+   **Prior period** (equal-length window before the period). Month-over-month always shows the
+   latest month in the period (month-to-date when incomplete).
+5. When filters change, the AI narrative is marked stale; **Regenerate for current selection**
+   sends the exact same filter to the backend.
+
+## The story (dashboard sections)
+
+| # | Question | Content |
+|---|---|---|
+| 01 | What happened? | Sales quantity (sell-out / net shipment split), net revenue, gross profit, gross margin, avg net price, MoM - each with a directional comparison |
+| 02 | When? | Monthly trend (current emphasised, last year quiet) with peak / price / stock annotations; diverging variance bars |
+| 03 | Where? | Ranked horizontal bars by channel, brand, product, channel type - size (share) or change (contribution to total change); sell-out vs sell-in panel |
+| 04 | Why might it have happened? | Driver importance (model permutation importance or univariate association), price vs quantity scatter, stock vs sales (indexed), discount bands, promoted vs non-promoted |
+| 05 | So what? | Deterministic key findings + Claude executive insight, top drivers, recommendations, limitations |
+| A | Appendix | Returns & inventory risk, data quality report and column mapping, model details |
+
+Chart titles are generated from the data ("MUB explains 64% of the decline") and every chart has
+a table twin. Vocabulary is strictly associative ("associated with", "model importance") - never
+causal.
+
+## Expected Excel structure
+
+Column names are matched flexibly ("Unit Price" → `sale_price`, "Sales Channel" → `sales_channel`).
+
+Required: `date, brand, product, qty, sale_price, sale_cost, sales_channel, channel_type,
+sales_type, return_qty, net_qty, stock_available`
+
+Optional: `shipment_qty, discount_pct, promotion_pct, total_sales, discount, promotion,
+refund_amount, net_sales, sale_price_net, return_qty_units`
+
+## Tests and verification
 
 ```bash
-cd frontend
-npm run dev
+cd backend && pytest -q            # 42 tests: mapping, validation, KPIs, drivers, filters, API flow (AI mocked)
+cd frontend && npx tsc --noEmit && npm run lint && npm run build
 ```
 
-The frontend calls the backend's origin directly (`http://localhost:8000` by default, via
-`NEXT_PUBLIC_API_BASE_URL`), relying on the backend's CORS config rather than proxying
-through Next's dev server - a full analysis run (deterministic pipeline + two sequential
-LLM calls) can take well over a minute, and Next's rewrite proxy was found to give up on
-long-lived proxied requests after ~30s even though the backend kept working. Open
-**http://localhost:3000**.
+The frontend was additionally verified end to end in a headless browser (Playwright):
+KPI values reconciled exactly against an independent recomputation from the dataset payload for
+unfiltered, combined (brand + product + channel + period), sales-type and reset states; stale /
+regenerated AI scope; empty state; MN/EN toggle; no horizontal overflow at 1280 / 1024 / 820 px;
+invalid-file and missing-column states; zero console errors on the production build.
 
-### Trying it out
+## Known limitations
 
-1. On the landing page, click **"Жишээ Excel татах"** to download `sample_data.xlsx`
-   (a 120-day synthetic dataset across 4 brands, 10 products and 4 channels), or drag in
-   your own `.xlsx` file.
-2. Click **"Excel файл сонгох"** (or drop the file) - the app immediately parses and
-   profiles it (rows, columns, date range, brand/product/channel counts). No AI call
-   happens yet.
-3. Click **"Шинжилгээ эхлүүлэх"** to run the full pipeline: validation, cleaning, KPI
-   calculation, driver statistics, then Claude's English analysis and OpenAI's Mongolian
-   translation.
-4. Explore the 9 result tabs: Overview, Sales Drivers, Sales Trend, Channel Analysis,
-   Brand & Product, Discount & Promotion, Inventory & Returns, AI Management Insight, and
-   Data Quality. A filter bar (Brand / Product / Channel, each defaulting to "Бүгд" = all)
-   sits above the tabs and narrows the tables/charts keyed by that dimension. The Sales
-   Trend tab also has a period-over-period comparison panel (WoW / MoM / QoQ / YoY),
-   computed client-side from the backend's time-series data - it reports "insufficient
-   history" rather than a misleading number when the uploaded date range is too short for
-   a given comparison (e.g. YoY needs 13+ months of data).
-
-Set `USE_MOCK_AI=true` in `backend/.env` to exercise the entire UI without any API key or
-API cost - a banner ("Mock AI горим") appears on the AI Insight tab so this is always
-visible to the user.
-
-## Backend tests
-
-```bash
-cd backend
-.venv\Scripts\activate
-pytest -q
-```
-
-29 tests cover column normalization, Excel validation/parsing, KPI and gross-profit/return-rate
-calculations, driver statistics, and Claude JSON-response parsing (including the one-retry
-malformed-JSON path). No test calls a real external API - Anthropic/OpenAI clients are mocked.
-
-## Known limitations (by design, for a local/capstone deployment)
-
-- Uploaded files are cached **in-memory per backend process** between the upload and analyze
-  steps (`app/services/session_store.py`), with a 1-hour TTL. This is intentionally simple for
-  a single-instance local deployment; a multi-worker production deployment would need a shared
-  store (Redis, a DB) instead.
-- `npm audit` flags known Next.js 14 advisories with no patched 14.x release available upstream
-  (fixes land only in the 15.x/16.x line, a breaking major upgrade). Acceptable for local/
-  academic use; revisit before any public deployment.
-- The multivariate driver model (Ridge/RandomForest) intentionally includes `qty`/`net_qty` as
-  drivers per the assignment spec, even though quantity is mechanically part of the sales
-  formula - so a very high R² there reflects that identity, not a discovered causal insight.
-  Read it alongside the correlation and group-contribution evidence, not in isolation.
-
-## Data principles this project follows
-
-1. Python calculates every financial fact; LLMs never compute core KPIs.
-2. Claude interprets the facts; it never invents or alters a number.
-3. OpenAI translates Claude's interpretation; it never re-analyzes or adds conclusions.
-4. Data-quality problems are always surfaced, never hidden or silently dropped.
-5. Statistical association is never described as causation, anywhere in the UI or prompts.
-6. API credentials live only in `backend/.env` (gitignored) and are never sent to the browser.
-7. Only aggregated, Top-N-limited analytics are sent to Claude/OpenAI - never raw row-level data.
+- Uploads and per-filter caches are held **in memory per backend process** (1-hour TTL). Use a
+  shared store for a multi-worker deployment.
+- The driver model is fitted at transaction-row level; when its holdout R² is below 0.10 the
+  ranking falls back to univariate association (Spearman ρ² / η²) and says so.
+- Year-over-year comparison needs a selected period of at most 12 months with last-year data;
+  otherwise the prior-period basis (or MoM only) is offered.
+- `npm audit` reports Next.js 14 advisories with no 14.x fix; acceptable for local/academic use.

@@ -1,13 +1,8 @@
-import type { AnalysisResponse, UploadResponse } from "@/types";
+import type { DatasetResponse, DriverAnalysisResponse, FilterSpec, InsightResponse, UploadResponse } from "@/types";
 
-// Analysis requests call the backend directly (not through Next's rewrite
-// proxy): the deterministic pipeline + two sequential LLM calls can run well
-// past a minute, and Next's dev-server proxy has been observed to give up on
-// long-lived proxied requests around ~30s, returning a client-side 500 even
-// though the backend keeps working and finishes successfully. Calling the
-// backend's own origin (CORS-enabled - see backend/app/main.py) avoids that
-// entirely. Override with NEXT_PUBLIC_API_BASE_URL if the backend runs
-// somewhere other than localhost:8000.
+// The frontend calls the backend origin directly (CORS-enabled) instead of
+// proxying through Next's dev server: the AI insight call can run past a
+// minute and the rewrite proxy was observed to drop long requests.
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export class ApiError extends Error {
@@ -19,33 +14,62 @@ export class ApiError extends Error {
   }
 }
 
+export class NetworkError extends Error {
+  constructor(message = "network") {
+    super(message);
+    this.name = "NetworkError";
+  }
+}
+
 async function parseErrorDetail(res: Response): Promise<string> {
   try {
     const data = await res.json();
     if (typeof data?.detail === "string") return data.detail;
+    if (Array.isArray(data?.detail)) return data.detail.map((d: { msg?: string }) => d.msg ?? "").join("; ");
     return JSON.stringify(data);
   } catch {
-    return res.statusText || "Тодорхойгүй алдаа гарлаа.";
+    return res.statusText || "Request failed";
   }
 }
 
-export async function uploadExcel(file: File): Promise<UploadResponse> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, init);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new NetworkError();
+  }
+  if (!res.ok) throw new ApiError(await parseErrorDetail(res), res.status);
+  return res.json() as Promise<T>;
+}
+
+export function uploadExcel(file: File): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
-
-  const res = await fetch(`${API_BASE_URL}/api/upload`, { method: "POST", body: formData });
-  if (!res.ok) {
-    throw new ApiError(await parseErrorDetail(res), res.status);
-  }
-  return res.json();
+  return request<UploadResponse>("/api/upload", { method: "POST", body: formData });
 }
 
-export async function runAnalysis(uploadId: string): Promise<AnalysisResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/analysis/${uploadId}`, { method: "POST" });
-  if (!res.ok) {
-    throw new ApiError(await parseErrorDetail(res), res.status);
-  }
-  return res.json();
+export function fetchDataset(uploadId: string): Promise<DatasetResponse> {
+  return request<DatasetResponse>(`/api/dataset/${uploadId}`);
+}
+
+export function fetchDriverAnalysis(uploadId: string, spec: FilterSpec, signal?: AbortSignal): Promise<DriverAnalysisResponse> {
+  return request<DriverAnalysisResponse>(`/api/analysis/${uploadId}/drivers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(spec),
+    signal,
+  });
+}
+
+export function fetchInsight(uploadId: string, spec: FilterSpec, forceRefresh = false, signal?: AbortSignal): Promise<InsightResponse> {
+  return request<InsightResponse>(`/api/analysis/${uploadId}/insight${forceRefresh ? "?force_refresh=true" : ""}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(spec),
+    signal,
+  });
 }
 
 export function sampleDownloadUrl(): string {

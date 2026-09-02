@@ -1,4 +1,9 @@
-/** Mirrors backend/app/models/schemas.py - keep the two in sync. */
+/** API contracts mirror backend/app/models/schemas.py - keep the two in sync.
+ *  Client-only types (SalesRow, Filters, ...) live at the bottom. */
+
+// ---------------------------------------------------------------------------
+// Upload / dataset profile
+// ---------------------------------------------------------------------------
 
 export interface DatasetProfile {
   rows: number;
@@ -52,6 +57,52 @@ export interface DataQualityReport {
   auto_corrections: AutoCorrection[];
 }
 
+// ---------------------------------------------------------------------------
+// Row-level dataset (columnar transport)
+// ---------------------------------------------------------------------------
+
+export interface DatasetDimensions {
+  brands: string[];
+  products: string[];
+  channels: string[];
+  channel_types: string[];
+  sales_types: string[];
+  brand_products: Record<string, string[]>;
+  months: string[];
+}
+
+export type ColumnValue = string | number | null;
+
+export interface DatasetResponse {
+  upload_id: string;
+  filename: string;
+  profile: DatasetProfile;
+  data_quality: DataQualityReport;
+  row_count: number;
+  excluded_rows: number;
+  available_fields: string[];
+  dimensions: DatasetDimensions;
+  columns: Record<string, ColumnValue[]>;
+}
+
+// ---------------------------------------------------------------------------
+// Filters (server vocabulary)
+// ---------------------------------------------------------------------------
+
+export interface FilterSpec {
+  brands: string[];
+  products: string[];
+  channels: string[];
+  channel_types: string[];
+  sales_types: string[];
+  date_from: string | null;
+  date_to: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// KPIs / statistics
+// ---------------------------------------------------------------------------
+
 export interface KpiSummary {
   gross_sales: number;
   net_sales: number;
@@ -74,25 +125,11 @@ export interface KpiSummary {
   avg_stock_available: number;
   low_stock_sku_count: number;
   stockout_observations: number;
-}
-
-export interface TimeSeriesPoint {
-  period: string;
-  net_sales: number;
-  gross_sales: number;
-  net_qty: number;
-  gross_profit: number;
-}
-
-export interface TimeAnalysis {
-  date_min: string | null;
-  date_max: string | null;
-  date_span_days: number;
-  daily: TimeSeriesPoint[];
-  weekly: TimeSeriesPoint[];
-  monthly: TimeSeriesPoint[];
-  short_history_warning: string | null;
-  strong_trend_reliable: boolean;
+  volume_units: number;
+  sell_out_units: number;
+  sell_in_units: number;
+  pos_row_count: number;
+  shipment_row_count: number;
 }
 
 export interface CorrelationResult {
@@ -112,85 +149,32 @@ export interface DriverEvidence {
   evidence: string[];
 }
 
-export interface GroupAnalysisRow {
-  group: string;
-  net_sales: number;
-  share_of_sales_pct: number;
-  net_qty: number;
-  gross_profit: number;
-  gross_margin_pct: number;
-  return_rate_pct: number;
-  avg_discount_pct: number;
-  avg_promotion_pct: number;
-}
-
-export interface DiscountBandRow {
-  band: string;
-  net_sales: number;
-  net_qty: number;
-  gross_profit: number;
-  gross_margin_pct: number;
-  row_count: number;
-}
-
-export interface PromotionComparisonRow {
-  group: "promoted" | "non_promoted";
-  avg_net_sales: number;
-  avg_units: number;
-  avg_selling_price: number;
-  avg_gross_profit: number;
-  avg_gross_margin_pct: number;
-  return_rate_pct: number;
-  row_count: number;
-}
-
-export interface ReturnRiskRow {
-  name: string;
-  dimension: "product" | "brand" | "channel";
-  return_rate_pct: number;
-  returned_units: number;
-  refund_amount: number;
-  net_sales: number;
-}
-
-export interface InventoryRiskRow {
-  product: string;
-  stock_available: number;
-  net_qty: number;
-  risk: "low_stock_high_sales" | "high_stock_low_sales";
-}
-
 export interface StatisticalModelResult {
   model_status: "ok" | "insufficient_data";
   sample_size: number;
+  target: string;
   model_type: string | null;
   mae: number | null;
   rmse: number | null;
   r2: number | null;
-  coefficients: Record<string, unknown>[];
-  permutation_importance: Record<string, unknown>[];
+  coefficients: { feature: string; standardized_coefficient: number }[];
+  permutation_importance: { feature: string; importance_mean: number; importance_std: number }[];
   notes: string[];
 }
 
-export interface FullAnalysisBundle {
-  dataset_profile: DatasetProfile;
-  data_quality: DataQualityReport;
-  kpis: KpiSummary;
-  time_analysis: TimeAnalysis;
+export interface DriverAnalysisResponse {
+  filter_row_count: number;
+  target: string;
+  importance_basis: "model_permutation_importance" | "univariate_association" | string;
   correlations: CorrelationResult[];
   driver_ranking: DriverEvidence[];
-  brand_analysis: GroupAnalysisRow[];
-  product_analysis: GroupAnalysisRow[];
-  channel_analysis: GroupAnalysisRow[];
-  channel_type_analysis: GroupAnalysisRow[];
-  sales_type_analysis: GroupAnalysisRow[];
-  discount_analysis: DiscountBandRow[];
-  promotion_analysis: PromotionComparisonRow[];
-  return_analysis: ReturnRiskRow[];
-  inventory_analysis: InventoryRiskRow[];
   statistical_model: StatisticalModelResult;
-  limitations: string[];
+  notes: string[];
 }
+
+// ---------------------------------------------------------------------------
+// AI output
+// ---------------------------------------------------------------------------
 
 export interface TopDriverInsight {
   rank: number;
@@ -232,12 +216,67 @@ export interface AnalysisMeta {
   translation_error: string | null;
 }
 
-export interface AnalysisResponse {
-  analysis_id: string;
-  bundle: FullAnalysisBundle;
+export interface InsightResponse {
+  filter_row_count: number;
+  scope: FilterSpec;
+  scope_label: string;
+  kpis: KpiSummary;
   ai_english: AIAnalysisResult;
   ai_mongolian: AIAnalysisResult | null;
   meta: AnalysisMeta;
+  generated_at: string;
 }
 
-export type AppStage = "landing" | "analyzing" | "results" | "error";
+// ---------------------------------------------------------------------------
+// Client-side model
+// ---------------------------------------------------------------------------
+
+/** One cleaned, derived sales record. Numbers are already canonical (backend
+ *  derive_core_fields); the browser only sums and divides. */
+export interface SalesRow {
+  date: string; // YYYY-MM-DD
+  month: string; // YYYY-MM
+  ts: number; // epoch ms (UTC midnight)
+  brand: string;
+  product: string;
+  channel: string;
+  channelType: string;
+  salesType: string; // "POS" | "SHIPMENT" | other label
+  isShipment: boolean;
+  qty: number;
+  returnQty: number;
+  netQty: number;
+  shipmentQty: number | null;
+  netShipmentQty: number | null;
+  volume: number; // sales quantity: net shipment for SHIPMENT rows, net qty otherwise
+  sellOut: number;
+  sellIn: number;
+  stock: number | null;
+  price: number;
+  cost: number;
+  discountPct: number | null;
+  promoPct: number | null;
+  grossSales: number;
+  discountAmt: number;
+  promoAmt: number;
+  refundAmt: number;
+  netSales: number;
+  cogs: number;
+  grossProfit: number;
+}
+
+export interface Filters {
+  brands: string[];
+  products: string[];
+  channels: string[];
+  channelTypes: string[];
+  salesTypes: string[];
+  dateFrom: string | null;
+  dateTo: string | null;
+}
+
+export type DimensionKey = "brands" | "products" | "channels" | "channelTypes" | "salesTypes";
+
+export type Locale = "mn" | "en";
+
+export type ComparisonBasis = "ly" | "prior";

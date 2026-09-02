@@ -2,29 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Design system tokens live in tailwind.config.js; this file holds base
+   resets and the few utilities Tailwind cannot express.
+   --------------------------------------------------------------------------- */
+
 @layer base {
   html {
-    @apply scroll-smooth;
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
   }
   body {
-    @apply bg-ink-50 text-ink-800 antialiased;
-    background-image:
-      radial-gradient(circle at 15% 0%, rgba(47, 107, 240, 0.06), transparent 45%),
-      radial-gradient(circle at 100% 20%, rgba(47, 107, 240, 0.05), transparent 40%);
-    background-attachment: fixed;
+    @apply bg-ground text-ink-700 antialiased;
+    font-feature-settings: "cv11", "ss01", "calt";
+  }
+  ::selection {
+    background: rgba(42, 120, 214, 0.18);
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-ink-900;
+    text-wrap: balance;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary {
+    list-style: none;
+  }
+  summary::before {
+    content: "";
+    display: inline-block;
+    width: 0.4rem;
+    height: 0.4rem;
+    margin-right: 0.6rem;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg) translateY(-1px);
+    opacity: 0.6;
+    transition: transform 150ms ease;
+  }
+  details[open] > summary::before {
+    transform: rotate(45deg) translateY(-2px);
   }
 }
 
-@layer components {
-  .glass-card {
-    @apply rounded-card border border-ink-200/70 bg-white/70 shadow-subtle backdrop-blur-md;
+@layer utilities {
+  .tnum {
+    font-variant-numeric: tabular-nums;
   }
-  .glass-panel {
-    @apply rounded-card border border-ink-200/60 bg-white/60 shadow-panel backdrop-blur-md;
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-1 focus-visible:ring-offset-surface;
   }
-  .section-label {
-    @apply text-xs font-semibold uppercase tracking-wider text-ink-400;
-  }
+}
+
+/* Recharts: recessive chrome, inherit typography */
+.recharts-wrapper,
+.recharts-surface {
+  outline: none;
+}
+.recharts-text {
+  font-family: inherit;
+}
+.recharts-cartesian-axis-tick-value {
+  fill: #8a94a6;
 }
 
 ::-webkit-scrollbar {
@@ -32,8 +75,17 @@
   width: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  @apply rounded-full bg-ink-300/60;
+  @apply rounded-full bg-ink-300;
 }
 ::-webkit-scrollbar-track {
   @apply bg-transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

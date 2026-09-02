@@ -1,16 +1,26 @@
-"""Sales-driver statistical analysis (spec sections 10-20).
+"""Sales-driver statistical analysis.
 
 Everything here is deterministic (pandas / numpy / scipy / scikit-learn).
 No AI call happens in this module - its output is exactly the structured
 evidence that later gets summarized (not recalculated) by Claude.
 
+Target
+------
+The driver analysis explains **sales quantity** (``volume_units``: sell-out
+units for POS rows, net shipment for SHIPMENT rows). Explaining revenue with
+quantity as a feature is a tautology (revenue = quantity x price), so
+quantity-type fields are never used as features - only price, cost, discount,
+promotion, stock availability, seasonality (month) and the categorical mix
+(brand, product, channel, channel type, sales type).
+
 Vocabulary discipline: this module only ever describes *association*
-(correlation, group contribution, permutation importance), never causation.
+(correlation, model permutation importance, group concentration), never
+causation.
 """
 from __future__ import annotations
 
 import warnings
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -36,40 +46,56 @@ from app.models.schemas import (
 from app.utils.derive import derive_core_fields
 from app.utils.formatting import safe_div
 
+TARGET_FIELD = "volume_units"
+
+# Numeric fields whose association with the target is reported.
 NUMERIC_DRIVERS = [
-    "qty",
     "sale_price",
     "sale_cost",
-    "sale_price_net",
     "discount_pct",
     "promotion_pct",
-    "return_qty",
-    "net_qty",
     "stock_available",
+    "return_qty",
 ]
+# Numeric features used by the multivariate model (sale_price_net is a
+# combination of sale_price and discount_pct, so it is left out to avoid
+# double counting).
+MODEL_NUMERIC_FEATURES = ["sale_price", "sale_cost", "discount_pct", "promotion_pct", "stock_available"]
 CATEGORICAL_DRIVERS = ["brand", "product", "sales_channel", "channel_type", "sales_type"]
+SEASONALITY_FEATURE = "month"
 
 MIN_ROWS_RIDGE = 30
 MIN_ROWS_RF = 80
 TOP_N = 10
 MAX_CATEGORY_LEVELS = 20
+RF_ESTIMATORS = 120
+PERMUTATION_REPEATS = 5
+
+BASIS_MODEL = "model_permutation_importance"
+BASIS_CORRELATION = "univariate_association"
+MIN_MODEL_R2_FOR_RANKING = 0.10
 
 
 def prepare_derived_frame(df: pd.DataFrame) -> pd.DataFrame:
-    """Adds the derived financial columns (net_sales, gross_profit, ...) that
-    every driver-analysis function below relies on."""
+    """Adds the derived financial + volume columns every driver-analysis
+    function below relies on."""
     d = derive_core_fields(df)
     d["net_sales"] = d["net_sales_derived"]
     return d
+
+
+def _target(d: pd.DataFrame) -> str:
+    return TARGET_FIELD if TARGET_FIELD in d.columns else "net_sales"
 
 
 # ---------------------------------------------------------------------------
 # Correlation analysis
 # ---------------------------------------------------------------------------
 
-def compute_correlations(d: pd.DataFrame) -> List[Dict]:
+def compute_correlations(d: pd.DataFrame, target_field: Optional[str] = None) -> List[Dict]:
+    target_field = target_field or _target(d)
     results = []
-    target = pd.to_numeric(d["net_sales"], errors="coerce")
+    target = pd.to_numeric(d[target_field], errors="coerce")
     for field in NUMERIC_DRIVERS:
         if field not in d.columns:
             continue
@@ -91,12 +117,13 @@ def compute_correlations(d: pd.DataFrame) -> List[Dict]:
 # ---------------------------------------------------------------------------
 
 def compute_group_analysis(d: pd.DataFrame, group_field: str, top_n: int = TOP_N) -> List[GroupAnalysisRow]:
-    if group_field not in d.columns:
+    if group_field not in d.columns or d.empty:
         return []
     total_net_sales = float(d["net_sales"].sum())
     grouped = d.groupby(group_field, dropna=True).agg(
         net_sales=("net_sales", "sum"),
         net_qty=("net_qty", "sum"),
+        volume_units=("volume_units", "sum") if "volume_units" in d.columns else ("net_qty", "sum"),
         gross_profit=("gross_profit", "sum"),
         return_qty=("return_qty", "sum") if "return_qty" in d.columns else ("net_qty", "sum"),
         qty=("qty", "sum") if "qty" in d.columns else ("net_qty", "sum"),
@@ -115,6 +142,7 @@ def compute_group_analysis(d: pd.DataFrame, group_field: str, top_n: int = TOP_N
                 net_sales=float(r["net_sales"]),
                 share_of_sales_pct=safe_div(float(r["net_sales"]), total_net_sales),
                 net_qty=float(r["net_qty"]),
+                volume_units=float(r["volume_units"]),
                 gross_profit=float(r["gross_profit"]),
                 gross_margin_pct=gross_margin_pct,
                 return_rate_pct=return_rate_pct,
@@ -126,11 +154,11 @@ def compute_group_analysis(d: pd.DataFrame, group_field: str, top_n: int = TOP_N
 
 
 # ---------------------------------------------------------------------------
-# Promotion effect (section 13)
+# Promotion effect
 # ---------------------------------------------------------------------------
 
 def compute_promotion_comparison(d: pd.DataFrame) -> List[PromotionComparisonRow]:
-    if "promotion_amt" not in d.columns:
+    if "promotion_amt" not in d.columns or d.empty:
         return []
     promoted_mask = d["promotion_amt"] > 0
     rows = []
@@ -164,11 +192,11 @@ def compute_promotion_comparison(d: pd.DataFrame) -> List[PromotionComparisonRow
 
 
 # ---------------------------------------------------------------------------
-# Discount bands (section 14)
+# Discount bands
 # ---------------------------------------------------------------------------
 
 def compute_discount_bands(d: pd.DataFrame) -> List[DiscountBandRow]:
-    if "discount_pct" not in d.columns:
+    if "discount_pct" not in d.columns or d.empty:
         return []
     bins = [-0.001, 0.0, 0.05, 0.10, 0.15, np.inf]
     labels = ["0%", "0-5%", "5-10%", "10-15%", "15%+"]
@@ -200,12 +228,12 @@ def compute_discount_bands(d: pd.DataFrame) -> List[DiscountBandRow]:
 
 
 # ---------------------------------------------------------------------------
-# Returns analysis (section 16)
+# Returns analysis
 # ---------------------------------------------------------------------------
 
 def compute_return_risk(d: pd.DataFrame, top_n: int = TOP_N) -> List[ReturnRiskRow]:
     rows: List[ReturnRiskRow] = []
-    if "return_qty" not in d.columns or "qty" not in d.columns:
+    if "return_qty" not in d.columns or "qty" not in d.columns or d.empty:
         return rows
     for dim, field in (("product", "product"), ("brand", "brand"), ("channel", "sales_channel")):
         if field not in d.columns:
@@ -234,15 +262,16 @@ def compute_return_risk(d: pd.DataFrame, top_n: int = TOP_N) -> List[ReturnRiskR
 
 
 # ---------------------------------------------------------------------------
-# Inventory risk (section 17)
+# Inventory risk
 # ---------------------------------------------------------------------------
 
 def compute_inventory_risk(d: pd.DataFrame, top_n: int = TOP_N) -> List[InventoryRiskRow]:
-    if "stock_available" not in d.columns or "product" not in d.columns:
+    if "stock_available" not in d.columns or "product" not in d.columns or d.empty:
         return []
+    volume_col = "volume_units" if "volume_units" in d.columns else "net_qty"
     grouped = d.groupby("product", dropna=True).agg(
         stock_available=("stock_available", "mean"),
-        net_qty=("net_qty", "sum"),
+        net_qty=(volume_col, "sum"),
     )
     if grouped.empty:
         return []
@@ -280,7 +309,7 @@ def compute_inventory_risk(d: pd.DataFrame, top_n: int = TOP_N) -> List[Inventor
 
 
 # ---------------------------------------------------------------------------
-# Multivariate driver model (section 18-19)
+# Multivariate driver model
 # ---------------------------------------------------------------------------
 
 def _cap_categories(series: pd.Series, max_levels: int = MAX_CATEGORY_LEVELS) -> pd.Series:
@@ -290,22 +319,28 @@ def _cap_categories(series: pd.Series, max_levels: int = MAX_CATEGORY_LEVELS) ->
 
 
 def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
-    numeric_features = [f for f in NUMERIC_DRIVERS if f in d.columns]
+    target = _target(d)
+    numeric_features = [f for f in MODEL_NUMERIC_FEATURES if f in d.columns]
     categorical_features = [f for f in CATEGORICAL_DRIVERS if f in d.columns]
 
-    model_df = d[numeric_features + categorical_features + ["net_sales"]].copy()
+    model_df = d[numeric_features + categorical_features + [target]].copy()
     if "date" in d.columns:
-        model_df["date"] = d["date"]
+        dates = pd.to_datetime(d["date"], errors="coerce")
+        model_df["date"] = dates
+        if len(dates) > 0 and dates.notna().all():
+            model_df[SEASONALITY_FEATURE] = dates.dt.month.map(lambda m: f"M{int(m):02d}")
+            categorical_features = categorical_features + [SEASONALITY_FEATURE]
 
-    model_df = model_df.dropna(subset=["net_sales"])
+    model_df = model_df.dropna(subset=[target])
     n = len(model_df)
 
     if n < MIN_ROWS_RIDGE or not numeric_features:
         return StatisticalModelResult(
             model_status="insufficient_data",
             sample_size=n,
+            target=target,
             notes=[
-                f"At least {MIN_ROWS_RIDGE} rows with a valid net_sales value are required to fit a "
+                f"At least {MIN_ROWS_RIDGE} rows with a valid {target} value are required to fit a "
                 f"driver model; only {n} were available."
             ],
         )
@@ -330,11 +365,12 @@ def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
         return StatisticalModelResult(
             model_status="insufficient_data",
             sample_size=n,
+            target=target,
             notes=["Not enough rows remain in the holdout split to validate a model reliably."],
         )
 
     X = model_df[numeric_features + categorical_features]
-    y = model_df["net_sales"]
+    y = model_df[target]
 
     preprocessor = ColumnTransformer(
         transformers=[
@@ -376,20 +412,27 @@ def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
 
     notes = [validation_note]
     if r2 is not None and r2 < 0.2:
-        notes.append("Model R² is low; treat driver coefficients as directional signals, not precise effects.")
+        notes.append("Model R2 is low; treat driver importances as directional signals, not precise effects.")
 
     model_type = "RidgeCV (linear, standardized numeric + one-hot categorical)"
     permutation_importances: List[Dict] = []
 
     if n >= MIN_ROWS_RF:
-        # n_jobs=1: joblib's process-based backend (n_jobs=-1) can hang the whole
-        # request under some process-launcher setups (e.g. a backgrounded/nohup'd
-        # server) since the worker subprocess never bootstraps. Datasets here are
-        # small enough that single-process fitting is plenty fast.
+        # n_jobs=1: joblib's process-based backend can hang under some process
+        # launchers; datasets here are small enough for single-process fitting.
         rf = Pipeline(
             [
                 ("prep", preprocessor),
-                ("model", RandomForestRegressor(n_estimators=300, max_depth=8, random_state=42, n_jobs=1)),
+                (
+                    "model",
+                    RandomForestRegressor(
+                        n_estimators=RF_ESTIMATORS,
+                        max_depth=8,
+                        min_samples_leaf=3,
+                        random_state=42,
+                        n_jobs=1,
+                    ),
+                ),
             ]
         )
         rf.fit(X_train, y_train)
@@ -404,7 +447,7 @@ def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             perm = permutation_importance(
-                rf, X_test, y_test, n_repeats=8, random_state=42, scoring="r2", n_jobs=1
+                rf, X_test, y_test, n_repeats=PERMUTATION_REPEATS, random_state=42, scoring="r2", n_jobs=1
             )
         rf_feature_names = rf.named_steps["prep"].get_feature_names_out()
         permutation_importances = [
@@ -412,7 +455,7 @@ def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
             for name, m, s in sorted(
                 zip(rf_feature_names, perm.importances_mean, perm.importances_std),
                 key=lambda t: -t[1],
-            )[:25]
+            )
         ]
     else:
         notes.append(
@@ -423,6 +466,7 @@ def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
     return StatisticalModelResult(
         model_status="ok",
         sample_size=n,
+        target=target,
         model_type=model_type,
         mae=mae,
         rmse=rmse,
@@ -434,89 +478,162 @@ def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
 
 
 # ---------------------------------------------------------------------------
-# Final combined driver score (section 20)
+# Final combined driver ranking
 # ---------------------------------------------------------------------------
-
-def _minmax(values: List[float]) -> List[float]:
-    if not values:
-        return []
-    lo, hi = min(values), max(values)
-    if hi - lo < 1e-12:
-        return [0.5 for _ in values]
-    return [(v - lo) / (hi - lo) for v in values]
-
 
 def _permutation_score_for_field(model: StatisticalModelResult, field: str) -> float:
     total = 0.0
     for entry in model.permutation_importance:
-        if entry["feature"].endswith(f"__{field}") or f"__{field}_" in entry["feature"] or entry["feature"] == f"num__{field}":
-            total += max(entry["importance_mean"], 0.0)
+        name = entry["feature"]
+        if name == f"num__{field}" or name.startswith(f"cat__{field}_"):
+            total += max(float(entry["importance_mean"]), 0.0)
     return total
+
+
+def _categorical_fields_in_model(model: StatisticalModelResult) -> List[str]:
+    fields: List[str] = []
+    for entry in model.permutation_importance:
+        name = entry["feature"]
+        if name.startswith("cat__"):
+            rest = name[len("cat__"):]
+            for candidate in CATEGORICAL_DRIVERS + [SEASONALITY_FEATURE]:
+                if rest.startswith(candidate + "_") and candidate not in fields:
+                    fields.append(candidate)
+    return fields
+
+
+def importance_basis(model: StatisticalModelResult) -> str:
+    """Permutation importance is only meaningful when the model actually explains
+    the target; a model with R2 near zero produces noise rankings, so the
+    univariate association basis (Spearman^2 for numeric fields, eta^2 for
+    categorical fields) is used instead."""
+    if (
+        model.model_status == "ok"
+        and model.permutation_importance
+        and model.r2 is not None
+        and model.r2 >= MIN_MODEL_R2_FOR_RANKING
+    ):
+        return BASIS_MODEL
+    return BASIS_CORRELATION
+
+
+def compute_eta_squared(d: pd.DataFrame, fields: List[str], target_field: Optional[str] = None) -> Dict[str, float]:
+    """Share of target variance explained by group means (eta^2, 0..1) for
+    each categorical field - the univariate analogue of a correlation."""
+    target_field = target_field or _target(d)
+    out: Dict[str, float] = {}
+    if d.empty or target_field not in d.columns:
+        return out
+    y = pd.to_numeric(d[target_field], errors="coerce")
+    total_ss = float(((y - y.mean()) ** 2).sum())
+    if total_ss <= 0:
+        return out
+    for field in fields:
+        if field not in d.columns:
+            continue
+        groups = y.groupby(d[field].astype(str))
+        between = float(((groups.transform("mean") - y.mean()) ** 2).sum())
+        out[field] = max(0.0, min(1.0, between / total_ss))
+    if "date" in d.columns:
+        months = pd.to_datetime(d["date"], errors="coerce").dt.month
+        if len(months) and months.notna().all():
+            groups = y.groupby(months.astype(int))
+            between = float(((groups.transform("mean") - y.mean()) ** 2).sum())
+            out[SEASONALITY_FEATURE] = max(0.0, min(1.0, between / total_ss))
+    return out
 
 
 def build_driver_ranking(
     correlations: List[Dict],
     model: StatisticalModelResult,
     group_analyses: Dict[str, List[GroupAnalysisRow]],
+    eta_squared: Optional[Dict[str, float]] = None,
 ) -> List[DriverEvidence]:
-    entries = []
+    basis = importance_basis(model)
+    eta_squared = eta_squared or {}
+    candidates: List[Dict] = []
 
-    abs_spearman_values = [abs(c["spearman"]) for c in correlations if c["spearman"] is not None]
-    perm_values = [_permutation_score_for_field(model, c["field"]) for c in correlations]
-    norm_spearman = _minmax([abs(c["spearman"]) if c["spearman"] is not None else 0.0 for c in correlations])
-    norm_perm = _minmax(perm_values) if any(perm_values) else [0.0] * len(correlations)
-
-    for i, c in enumerate(correlations):
-        spearman = c["spearman"] or 0.0
-        pearson = c["pearson"] or 0.0
-        combined = 0.6 * norm_spearman[i] + 0.4 * norm_perm[i]
-        score = round(combined * 100, 1)
-
-        direction = "positive" if spearman >= 0 else "negative"
-        evidence = []
-        if c["pearson"] is not None:
-            evidence.append(f"Pearson r = {pearson:.2f} with net sales (n={c['n']}).")
-        if c["spearman"] is not None:
-            evidence.append(f"Spearman rho = {spearman:.2f} with net sales (n={c['n']}).")
-        if norm_perm[i] > 0:
-            evidence.append("Contributes measurable permutation importance in the driver model.")
+    for c in correlations:
+        spearman = c["spearman"]
+        pearson = c["pearson"]
+        perm = _permutation_score_for_field(model, c["field"])
+        raw = perm if basis == BASIS_MODEL else (spearman or 0.0) ** 2
+        evidence: List[str] = []
+        if pearson is not None:
+            evidence.append(f"Pearson r = {pearson:.2f} with sales quantity (n={c['n']}).")
+        if spearman is not None:
+            evidence.append(f"Spearman rho = {spearman:.2f} with sales quantity (n={c['n']}).")
+        if basis == BASIS_MODEL:
+            evidence.append(f"Model permutation importance (mean R2 drop when shuffled) = {perm:.3f}.")
+        if not evidence:
+            evidence.append("Insufficient paired observations to compute an association.")
 
         confidence = "low"
-        if c["n"] >= 200 and abs(spearman) >= 0.3:
+        rho = abs(spearman or 0.0)
+        if c["n"] >= 200 and rho >= 0.3:
             confidence = "high"
-        elif c["n"] >= 50 and abs(spearman) >= 0.15:
+        elif c["n"] >= 50 and rho >= 0.15:
+            confidence = "medium"
+        if basis == BASIS_MODEL and perm >= 0.05 and c["n"] >= 50 and confidence == "low":
             confidence = "medium"
 
-        if c["field"] in ("discount_pct", "promotion_pct"):
-            direction = f"{'negative' if spearman < 0 else 'positive'}_correlation_with_net_sales"
-
-        entries.append(
-            DriverEvidence(
-                driver=c["field"],
-                importance_score=score,
-                direction=direction,
-                confidence=confidence,  # type: ignore[arg-type]
-                evidence=evidence or ["Insufficient paired observations to compute correlation."],
-            )
+        candidates.append(
+            {
+                "driver": c["field"],
+                "raw": raw,
+                "direction": "positive" if (spearman or 0.0) >= 0 else "negative",
+                "confidence": confidence,
+                "evidence": evidence,
+            }
         )
 
-    for field, rows in group_analyses.items():
-        if not rows:
+    categorical_fields = list(group_analyses.keys())
+    for f in list(_categorical_fields_in_model(model)) + list(eta_squared.keys()):
+        if f not in categorical_fields:
+            categorical_fields.append(f)
+
+    for field in categorical_fields:
+        rows = group_analyses.get(field) or []
+        perm = _permutation_score_for_field(model, field)
+        eta = float(eta_squared.get(field, 0.0))
+        raw = perm if basis == BASIS_MODEL else eta
+        if raw <= 0 and not rows:
             continue
-        shares = [r.share_of_sales_pct for r in rows]
-        concentration = max(shares) if shares else 0.0
-        score = round(min(concentration, 1.0) * 100, 1)
-        top = rows[0]
+        evidence = []
+        if field in eta_squared:
+            evidence.append(f"Group means explain {eta*100:.1f}% of quantity variance (eta-squared).")
+        if rows:
+            top = rows[0]
+            evidence.append(
+                f"Top group '{top.group}' accounts for {top.share_of_sales_pct*100:.1f}% of net sales "
+                f"across {len(rows)} groups."
+            )
+        if basis == BASIS_MODEL:
+            evidence.append(f"Model permutation importance summed over its levels = {perm:.3f}.")
+        if field == SEASONALITY_FEATURE:
+            evidence.append("Calendar month captures seasonality in the observed quantities.")
+        confidence = "medium" if (basis == BASIS_MODEL and perm > 0.01) or eta >= 0.02 else "low"
+        candidates.append(
+            {
+                "driver": field,
+                "raw": raw,
+                "direction": "mix_effect",
+                "confidence": confidence,
+                "evidence": evidence or ["No group-level evidence available."],
+            }
+        )
+
+    max_raw = max((c["raw"] for c in candidates), default=0.0)
+    entries: List[DriverEvidence] = []
+    for c in candidates:
+        score = round((c["raw"] / max_raw) * 100, 1) if max_raw > 0 else 0.0
         entries.append(
             DriverEvidence(
-                driver=field,
+                driver=c["driver"],
                 importance_score=score,
-                direction="categorical_effect",
-                confidence="medium" if len(rows) >= 3 else "low",
-                evidence=[
-                    f"Top group '{top.group}' accounts for {top.share_of_sales_pct*100:.1f}% of net sales.",
-                    f"Analyzed across {len(rows)} groups.",
-                ],
+                direction=c["direction"],
+                confidence=c["confidence"],  # type: ignore[arg-type]
+                evidence=c["evidence"],
             )
         )
 

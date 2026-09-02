@@ -94,6 +94,13 @@ class KpiSummary(BaseModel):
     avg_stock_available: float
     low_stock_sku_count: int
     stockout_observations: int
+    # Volume split - sell-out (POS) and sell-in (SHIPMENT) are different
+    # business concepts and are never silently summed.
+    volume_units: float = 0.0
+    sell_out_units: float = 0.0
+    sell_in_units: float = 0.0
+    pos_row_count: int = 0
+    shipment_row_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +155,7 @@ class GroupAnalysisRow(BaseModel):
     return_rate_pct: float
     avg_discount_pct: float
     avg_promotion_pct: float
+    volume_units: float = 0.0
 
 
 class DiscountBandRow(BaseModel):
@@ -189,6 +197,7 @@ class InventoryRiskRow(BaseModel):
 class StatisticalModelResult(BaseModel):
     model_status: Literal["ok", "insufficient_data"]
     sample_size: int
+    target: str = "volume_units"
     model_type: Optional[str] = None
     mae: Optional[float] = None
     rmse: Optional[float] = None
@@ -268,3 +277,77 @@ class AnalysisResponse(BaseModel):
     ai_english: AIAnalysisResult
     ai_mongolian: Optional[AIAnalysisResult] = None
     meta: AnalysisMeta
+
+
+# ---------------------------------------------------------------------------
+# Filtering - the single filter vocabulary shared by the dashboard (client-side
+# aggregation), the driver-model endpoint and the AI-insight endpoint.
+# ---------------------------------------------------------------------------
+
+class FilterSpec(BaseModel):
+    """Empty list = no restriction on that dimension. Dates are inclusive
+    ISO calendar days (YYYY-MM-DD)."""
+    brands: List[str] = Field(default_factory=list)
+    products: List[str] = Field(default_factory=list)
+    channels: List[str] = Field(default_factory=list)
+    channel_types: List[str] = Field(default_factory=list)
+    sales_types: List[str] = Field(default_factory=list)
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+
+    def is_empty(self) -> bool:
+        return not (
+            self.brands
+            or self.products
+            or self.channels
+            or self.channel_types
+            or self.sales_types
+            or self.date_from
+            or self.date_to
+        )
+
+
+class DatasetDimensions(BaseModel):
+    brands: List[str] = Field(default_factory=list)
+    products: List[str] = Field(default_factory=list)
+    channels: List[str] = Field(default_factory=list)
+    channel_types: List[str] = Field(default_factory=list)
+    sales_types: List[str] = Field(default_factory=list)
+    brand_products: Dict[str, List[str]] = Field(default_factory=dict)
+    months: List[str] = Field(default_factory=list)
+
+
+class DatasetResponse(BaseModel):
+    """The cleaned, derived row-level dataset in columnar form. The dashboard
+    filters and aggregates this in the browser so every KPI, chart and table
+    is guaranteed to read from one identical filtered slice."""
+    upload_id: str
+    filename: str
+    profile: DatasetProfile
+    data_quality: DataQualityReport
+    row_count: int
+    excluded_rows: int
+    available_fields: List[str]
+    dimensions: DatasetDimensions
+    columns: Dict[str, List[Any]]
+
+
+class DriverAnalysisResponse(BaseModel):
+    filter_row_count: int
+    target: str
+    importance_basis: str
+    correlations: List[CorrelationResult]
+    driver_ranking: List[DriverEvidence]
+    statistical_model: StatisticalModelResult
+    notes: List[str] = Field(default_factory=list)
+
+
+class InsightResponse(BaseModel):
+    filter_row_count: int
+    scope: FilterSpec
+    scope_label: str
+    kpis: KpiSummary
+    ai_english: AIAnalysisResult
+    ai_mongolian: Optional[AIAnalysisResult] = None
+    meta: AnalysisMeta
+    generated_at: str

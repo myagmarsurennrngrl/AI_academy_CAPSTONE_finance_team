@@ -1,15 +1,27 @@
-"""Derives canonical financial fields (gross sales, COGS, net sales, gross
-profit, ...) from whatever subset of source columns the uploaded workbook
-actually provides.
+"""Derives canonical financial and volume fields (gross sales, COGS, net sales,
+gross profit, sell-out vs sell-in volume, ...) from whatever subset of source
+columns the uploaded workbook actually provides.
 
-Centralized here because both validation_service (consistency checks) and
-metric_service / driver_service (KPI + driver math) need the same derivation
-logic and must never disagree with each other.
+Centralized here because validation_service (consistency checks),
+metric_service / driver_service (KPI + driver math) and dataset_service (the
+row-level payload the dashboard filters on) all need the same derivation
+logic and must never disagree with each other. The function is idempotent:
+running it on an already-derived frame yields the same values.
+
+Business vocabulary
+-------------------
+* ``net_qty``          = qty - return_qty                (sell-out, POS rows)
+* ``net_shipment_qty`` = shipment_qty - return_qty       (sell-in, SHIPMENT rows)
+* ``volume_units``     = net shipment for SHIPMENT rows, net_qty otherwise.
+  This is the "sales quantity" the dashboard reports; it is never a blind sum
+  of POS and shipment units without the split being shown alongside.
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+from app.utils.sales_type import SHIPMENT, normalize_sales_type
 
 
 def _col(df: pd.DataFrame, name: str, default=0.0) -> pd.Series:
@@ -21,7 +33,9 @@ def _col(df: pd.DataFrame, name: str, default=0.0) -> pd.Series:
 def derive_core_fields(df: pd.DataFrame) -> pd.DataFrame:
     """Returns a copy of df with guaranteed numeric canonical columns:
     net_qty, gross_sales, discount_amt, promotion_amt, refund_amt,
-    net_sales, cogs, gross_profit. Uses provided monetary columns when
+    net_sales_derived, cogs, gross_profit, gross_margin_pct_row, plus the
+    volume split: is_shipment, net_shipment_qty, volume_units,
+    sell_out_units, sell_in_units. Uses provided monetary columns when
     present, otherwise derives them from qty/price/percent fields.
     """
     out = df.copy()
@@ -67,16 +81,11 @@ def derive_core_fields(df: pd.DataFrame) -> pd.DataFrame:
     out["promotion_amt"] = promotion_amt
 
     # refund amount: prefer explicit column, else sale_price_net/sale_price * returned units
+    unit_price_for_refund = _col(out, "sale_price_net") if "sale_price_net" in out.columns else sale_price
     if "refund_amount" in out.columns:
         refund_amt = pd.to_numeric(out["refund_amount"], errors="coerce")
-        unit_price_for_refund = (
-            _col(out, "sale_price_net") if "sale_price_net" in out.columns else sale_price
-        )
         refund_amt = refund_amt.fillna(unit_price_for_refund * return_qty_units)
     else:
-        unit_price_for_refund = (
-            _col(out, "sale_price_net") if "sale_price_net" in out.columns else sale_price
-        )
         refund_amt = unit_price_for_refund * return_qty_units
     out["refund_amt"] = refund_amt
 
@@ -98,5 +107,27 @@ def derive_core_fields(df: pd.DataFrame) -> pd.DataFrame:
             0.0,
         )
     out["gross_margin_pct_row"] = margin
+
+    # --- sell-out (POS) vs sell-in (SHIPMENT) volume split -------------------
+    if "sales_type" in out.columns:
+        out["sales_type"] = out["sales_type"].map(normalize_sales_type)
+        is_shipment = out["sales_type"] == SHIPMENT
+    else:
+        is_shipment = pd.Series(False, index=out.index)
+    out["is_shipment"] = is_shipment.astype(bool)
+
+    if "shipment_qty" in out.columns:
+        shipment_qty = pd.to_numeric(out["shipment_qty"], errors="coerce")
+        net_shipment = (shipment_qty - return_qty).where(out["is_shipment"])
+    else:
+        net_shipment = pd.Series(np.nan, index=out.index, dtype="float64")
+    out["net_shipment_qty"] = net_shipment
+
+    net_qty_f = out["net_qty"].astype("float64")
+    net_shipment_f = out["net_shipment_qty"].astype("float64")
+    has_net_shipment = net_shipment_f.notna()
+    out["volume_units"] = np.where(has_net_shipment, net_shipment_f, net_qty_f)
+    out["sell_out_units"] = np.where(out["is_shipment"], 0.0, net_qty_f)
+    out["sell_in_units"] = np.where(out["is_shipment"], out["volume_units"], 0.0)
 
     return out
