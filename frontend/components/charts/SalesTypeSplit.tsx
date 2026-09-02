@@ -101,7 +101,7 @@ export function SalesTypeSplit({ title, split }: Props) {
             <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }} barGap={2} barCategoryGap="30%">
               <XAxis dataKey="label" tick={AXIS_TICK} axisLine={false} tickLine={false} minTickGap={12} />
               <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v: number) => formatCompact(v, locale)} width={44} tickCount={4} />
-              <Tooltip content={renderTooltip} cursor={{ fill: "rgba(16,24,40,0.04)" }} />
+              <Tooltip content={renderTooltip} cursor={{ fill: CHART.cursor }} />
               <Bar dataKey="sellOut" fill={CHART.primary} maxBarSize={BAR_MAX} radius={[3, 3, 0, 0]} isAnimationActive={false} />
               <Bar dataKey="sellIn" fill={CHART.secondary} maxBarSize={BAR_MAX} radius={[3, 3, 0, 0]} isAnimationActive={false} />
             </BarChart>

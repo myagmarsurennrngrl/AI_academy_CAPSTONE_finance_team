@@ -40,6 +40,7 @@ class StoredUpload:
     # Per-filter caches keyed by dataset_service.filter_hash(spec)
     driver_cache: Dict[str, dict] = field(default_factory=dict)
     insight_cache: Dict[str, dict] = field(default_factory=dict)
+    forecast_cache: Dict[str, dict] = field(default_factory=dict)
     # Legacy single-shot analysis cache (POST /api/analysis/{id})
     cached_analysis: Optional[dict] = None
     prepare_lock: threading.Lock = field(default_factory=threading.Lock)
@@ -112,3 +113,16 @@ def get_cached_insight(upload_id: str, key: str) -> Optional[dict]:
     with _LOCK:
         record = _STORE.get(upload_id)
         return record.insight_cache.get(key) if record else None
+
+
+def cache_forecast(upload_id: str, key: str, payload: dict) -> None:
+    with _LOCK:
+        record = _STORE.get(upload_id)
+        if record:
+            record.forecast_cache[key] = payload
+
+
+def get_cached_forecast(upload_id: str, key: str) -> Optional[dict]:
+    with _LOCK:
+        record = _STORE.get(upload_id)
+        return record.forecast_cache.get(key) if record else None

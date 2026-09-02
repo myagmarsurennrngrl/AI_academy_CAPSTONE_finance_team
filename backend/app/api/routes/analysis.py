@@ -13,9 +13,10 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
+from app.api.deps import get_current_user
 from app.models.schemas import AnalysisResponse, DriverAnalysisResponse, FilterSpec, InsightResponse
 from app.services import analysis_pipeline, dataset_service, session_store
 from app.services.analysis_pipeline import InsufficientDataError
@@ -24,7 +25,7 @@ from app.services.excel_service import ExcelParseError
 from app.services.openai_service import OpenAIServiceError
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["analysis"])
+router = APIRouter(prefix="/api", tags=["analysis"], dependencies=[Depends(get_current_user)])
 
 UPLOAD_MISSING = "Upload not found or has expired. Please upload the Excel file again."
 

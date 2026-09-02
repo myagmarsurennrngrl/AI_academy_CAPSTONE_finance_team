@@ -47,7 +47,7 @@ export function FilterBar({ api, dataMin, dataMax, shownRows, totalRows }: Filte
   }
 
   return (
-    <div className="sticky top-14 z-30 -mx-4 border-b border-line bg-ground/90 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+    <div className="glass-ground sticky top-14 z-30 -mx-4 border-b px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
       <div className="mx-auto max-w-[1440px]">
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-[1.3fr_repeat(5,minmax(0,1fr))_auto]">
           <DateRangeFilter testId="filter-period" dataMin={dataMin} dataMax={dataMax} from={filters.dateFrom} to={filters.dateTo} onChange={api.setDateRange} />

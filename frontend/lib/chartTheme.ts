@@ -1,25 +1,31 @@
 /** Chart tokens. One primary hue for "the data", a quiet gray for comparison
  *  context, semantic colors only for direction (positive / negative), and a
  *  second validated categorical hue used solely where two real categories
- *  must be told apart (sell-out vs sell-in). Palette pairs validated with the
- *  dataviz validator (light surface #ffffff). */
+ *  must be told apart (sell-out vs sell-in).
+ *
+ *  Values are CSS variable references resolved by the browser, so every chart
+ *  follows the light / dark palette declared in app/globals.css without the
+ *  components knowing which theme is active. SVG presentation attributes
+ *  (fill, stroke, stopColor) accept var() in all supported browsers. Palette
+ *  pairs validated with the dataviz validator for both surfaces. */
 
 export const CHART = {
-  primary: "#2a78d6",
-  primarySoft: "#cde2fb",
-  secondary: "#eb6834", // second categorical slot (sell-in / shipment)
-  comparison: "#c3c9d3", // last year / prior period - deliberately quiet
-  comparisonInk: "#7b8494",
-  positive: "#1f8a5b",
-  negative: "#d64545",
-  neutral: "#98a2b3",
-  ink: "#101828",
-  inkSecondary: "#475467",
-  inkMuted: "#8a94a6",
-  grid: "#eceff3",
-  axis: "#d5dae2",
-  surface: "#ffffff",
-  highlight: "#0f4c9a",
+  primary: "var(--chart-primary)",
+  primarySoft: "var(--chart-primary-soft)",
+  secondary: "var(--chart-secondary)", // second categorical slot (sell-in / shipment)
+  comparison: "var(--chart-comparison)", // last year / prior period - deliberately quiet
+  comparisonInk: "var(--chart-comparison-ink)",
+  positive: "var(--chart-positive)",
+  negative: "var(--chart-negative)",
+  neutral: "var(--chart-neutral)",
+  ink: "var(--chart-ink)",
+  inkSecondary: "var(--chart-ink-secondary)",
+  inkMuted: "var(--chart-ink-muted)",
+  grid: "var(--chart-grid)",
+  axis: "var(--chart-axis)",
+  surface: "var(--chart-surface)",
+  highlight: "var(--chart-highlight)",
+  cursor: "var(--chart-cursor)",
 } as const;
 
 export const AXIS_TICK = { fill: CHART.inkMuted, fontSize: 11, fontFamily: "inherit" } as const;

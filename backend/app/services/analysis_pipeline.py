@@ -44,6 +44,7 @@ from app.services.openai_service import (
     translate_to_mongolian,
 )
 from app.services.session_store import StoredUpload
+from app.utils.formatting import sanitize_numbers
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,7 @@ def run_driver_analysis(frame: pd.DataFrame, spec: FilterSpec) -> DriverAnalysis
 
     notes = list(statistical_model.notes)
     notes.append("Importance scores describe statistical association with sales quantity, not causation.")
-    return DriverAnalysisResponse(
+    response = DriverAnalysisResponse(
         filter_row_count=int(len(filtered)),
         target=statistical_model.target,
         importance_basis=driver_service.importance_basis(statistical_model),
@@ -211,6 +212,10 @@ def run_driver_analysis(frame: pd.DataFrame, spec: FilterSpec) -> DriverAnalysis
         statistical_model=statistical_model,
         notes=notes,
     )
+    # driver_service already coerces every figure to a finite float; this
+    # final pass guarantees the payload is strictly JSON-serialisable even if
+    # a future statistic slips a NaN / inf into one of the free-form dicts.
+    return DriverAnalysisResponse(**sanitize_numbers(response.model_dump()))
 
 
 # ---------------------------------------------------------------------------

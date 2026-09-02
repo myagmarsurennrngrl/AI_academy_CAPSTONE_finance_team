@@ -1,34 +1,44 @@
 /** @type {import('tailwindcss').Config}
  *  Design system: one restrained corporate palette, one accent, semantic
- *  colors only for direction, a single spacing/radius/shadow scale. */
+ *  colors only for direction, a single spacing/radius/shadow scale.
+ *
+ *  Every color resolves to a CSS variable declared in app/globals.css so the
+ *  same utility classes render the light palette by default and the dark
+ *  palette when <html class="dark"> is present (ThemeProvider). The
+ *  `<alpha-value>` placeholder keeps opacity modifiers (bg-surface/70) working. */
+const v = (name) => `rgb(var(--c-${name}) / <alpha-value>)`;
+
 module.exports = {
+  darkMode: "class",
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./hooks/**/*.{ts,tsx}", "./lib/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        ground: "#f5f6f8",
-        surface: "#ffffff",
-        surface2: "#f8f9fb",
-        line: "#e4e7ec",
-        lineStrong: "#d0d5dd",
+        ground: v("ground"),
+        surface: v("surface"),
+        surface2: v("surface2"),
+        line: v("line"),
+        lineStrong: v("line-strong"),
         ink: {
-          900: "#101828",
-          800: "#1d2939",
-          700: "#344054",
-          600: "#475467",
-          500: "#667085",
-          400: "#98a2b3",
-          300: "#d0d5dd",
+          900: v("ink-900"),
+          800: v("ink-800"),
+          700: v("ink-700"),
+          600: v("ink-600"),
+          500: v("ink-500"),
+          400: v("ink-400"),
+          300: v("ink-300"),
         },
-        accent: "#2a78d6",
-        accentHover: "#1f63b8",
-        accentSoft: "#eaf2fc",
-        positive: "#1f8a5b",
-        positiveSoft: "#e8f5ee",
-        negative: "#d64545",
-        negativeSoft: "#fbeaea",
-        warning: "#9a6700",
-        warningSoft: "#fdf3dc",
+        // text placed on an ink-900 background (white in light mode, dark in dark mode)
+        onInk: v("on-ink"),
+        accent: v("accent"),
+        accentHover: v("accent-hover"),
+        accentSoft: v("accent-soft"),
+        positive: v("positive"),
+        positiveSoft: v("positive-soft"),
+        negative: v("negative"),
+        negativeSoft: v("negative-soft"),
+        warning: v("warning"),
+        warningSoft: v("warning-soft"),
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"],
@@ -40,8 +50,8 @@ module.exports = {
         chip: "6px",
       },
       boxShadow: {
-        card: "0 1px 2px rgba(16, 24, 40, 0.05)",
-        pop: "0 8px 24px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.06)",
+        card: "var(--shadow-card)",
+        pop: "var(--shadow-pop)",
       },
     },
   },

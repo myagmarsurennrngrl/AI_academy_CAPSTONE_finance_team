@@ -5,9 +5,10 @@ from __future__ import annotations
 import os
 import re
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from app.api.deps import get_current_user
 from app.config import get_settings
 from app.models.schemas import UploadResponse
 from app.services import excel_service, session_store
@@ -24,7 +25,7 @@ def _sanitize_filename(filename: str) -> str:
     return name[:200] or "upload.xlsx"
 
 
-@router.post("/upload", response_model=UploadResponse)
+@router.post("/upload", response_model=UploadResponse, dependencies=[Depends(get_current_user)])
 async def upload_excel(file: UploadFile = File(...)) -> UploadResponse:
     settings = get_settings()
     filename = _sanitize_filename(file.filename or "")

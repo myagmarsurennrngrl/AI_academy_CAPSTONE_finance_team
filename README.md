@@ -1,9 +1,16 @@
-# Sales Driver Intelligence
-### Борлуулалтын хүчин зүйлийн шинжилгээ · Sales Driver Intelligence Platform
+# Densmaa 1.0
+### Борлуулалтын шинжилгээ ба таамаглал · Sales analysis & forecasting platform
 
-Upload an Excel sales dataset and get a management-ready, filterable analysis: deterministic
-Python KPIs and driver statistics, a Claude-generated English narrative, and an OpenAI
-Mongolian translation - presented as a five-level data story (What → When → Where → Why → So what).
+Sign in, pick a module, upload an Excel sales dataset:
+
+* **Sales drivers** - a management-ready, filterable analysis: deterministic Python KPIs and
+  driver statistics, a Claude-generated English narrative and an OpenAI Mongolian translation,
+  presented as a five-level data story (What → When → Where → Why → So what).
+* **Sales forecast** - a monthly forecast of net sales, sales quantity or gross profit up to a
+  month the user picks. Six methods (seasonal naive, drift, moving average, Holt-Winters,
+  trend + seasonality regression, XGBoost on lag features) are backtested with a rolling origin
+  on the file's own history; the one with the lowest WAPE is refit and used, with an 80% band
+  from its backtest errors and a transparent comparison table.
 
 > AI_academy_CAPSTONE_finance_team - a group capstone project applying AI to real finance
 > workflows and data.
@@ -18,7 +25,9 @@ Excel upload ──► parse + validate + clean (pandas)
                  │
                  ├─► POST /api/analysis/{id}/drivers   same filter ─► correlations, model importance
                  │
-                 └─► POST /api/analysis/{id}/insight   same filter ─► compact JSON ─► Claude (EN) ─► OpenAI (MN)
+                 ├─► POST /api/analysis/{id}/insight   same filter ─► compact JSON ─► Claude (EN) ─► OpenAI (MN)
+                 │
+                 └─► POST /api/forecast/{id}            target + last month + filter ─► monthly series ─► backtest 6 methods ─► best forecast
 ```
 
 **One source of truth for filtering.** The dashboard receives the cleaned, derived dataset once
@@ -30,8 +39,15 @@ same semantics (`backend/app/services/dataset_service.apply_filters`). The AI na
 tagged with the scope it was generated for and flagged as stale when filters change.
 
 **Python computes every number; AI only interprets.** Claude receives aggregated, Top-N-limited
-JSON (never raw rows) plus an `analysis_scope` block describing the active filters. OpenAI
-only translates Claude's finished analysis.
+JSON (never raw rows) plus an `analysis_scope` block describing the active filters. Numbers are
+presented before they leave Python (`compact_payload.present_numbers`): every `*_pct` ratio
+becomes percentage points with one decimal, currency and unit figures become whole numbers, so
+the narrative reads "31.9%" and "122,606,717", never "0.3187762" or "122606717.0". OpenAI only
+translates Claude's finished analysis and must preserve those figures.
+
+**Only signed-in users can analyse.** There is no self sign-up: an administrator creates each
+account (username + password) in the **Users** panel or with `python -m app.manage`. Every
+upload / dataset / analysis endpoint requires the bearer token issued by `POST /api/auth/login`.
 
 **Sell-out and sell-in are different concepts.** `sales_type` values are normalised to
 `POS` (sell-out) or `SHIPMENT` (sell-in). Sales quantity (`volume_units`) is `qty − return_qty`
@@ -40,8 +56,8 @@ shown side by side and never summed into one undifferentiated figure.
 
 ## Stack
 
-- **Frontend**: Next.js 14 (App Router) · TypeScript · Tailwind CSS · Recharts · lucide-react
-- **Backend**: FastAPI · pandas · numpy · scikit-learn · scipy · pydantic · openpyxl
+- **Frontend**: Next.js 14 (App Router) · TypeScript · Tailwind CSS (CSS-variable palette, light + dark mode) · Recharts · lucide-react
+- **Backend**: FastAPI · pandas · numpy · scikit-learn · xgboost · scipy · pydantic · openpyxl
 - **AI**: Anthropic API (`claude-fable-5`) for analysis, OpenAI Responses API (`gpt-5.6-terra`)
   for Mongolian translation - both configurable via `.env`, both mockable (`USE_MOCK_AI=true`)
 
@@ -52,7 +68,8 @@ backend/
   app/
     main.py                        FastAPI wiring (CORS, routers)
     config.py                      Settings from .env
-    api/routes/                    upload.py · dataset.py · analysis.py
+    api/routes/                    auth.py · upload.py · dataset.py · analysis.py · forecast.py
+    api/deps.py                    get_current_user / require_admin (bearer token)
     services/
       excel_service.py             read workbook, map columns, profile
       validation_service.py        clean + data-quality report (never silently drops rows)
@@ -60,15 +77,23 @@ backend/
       metric_service.py            KPIs incl. sell-out / sell-in split
       driver_service.py            correlations, eta², Ridge/RandomForest, permutation importance, ranking
       analysis_pipeline.py         orchestration: prepare · dataset · drivers · insight
+      forecast_service.py          monthly series, 6 candidate methods, rolling backtest, selection, intervals
       compact_payload.py           Top-N JSON sent to Claude (with analysis_scope)
       anthropic_service.py · openai_service.py · mock_ai.py · session_store.py
+      auth_service.py                file-backed user store (PBKDF2 hashes), HMAC-signed login tokens
+    manage.py                      CLI: create-user · list-users · set-password · delete-user
     utils/                         column_mapping.py · sales_type.py · derive.py · formatting.py
     models/schemas.py              Pydantic schemas (mirrored in frontend/types/index.ts)
-  tests/                           42 pytest tests (external APIs mocked)
+  tests/                           pytest suite (external APIs mocked) incl. auth + numeric-safety tests
 
 frontend/
   app/                             page.tsx (upload → dashboard), layout.tsx, globals.css, icon.svg
   components/
+    home/ModuleChooser.tsx         first screen after sign-in: two module squares with short descriptions
+    forecast/ForecastView.tsx      forecast module: measure · last month · scope, KPIs, chart, method comparison, table
+    charts/ForecastChart.tsx       actuals + backtest fit + forecast + 80% band
+    auth/LoginScreen.tsx           username / password sign-in
+    admin/AdminPanel.tsx           [admin] create / delete users, reset passwords, change roles
     upload/UploadScreen.tsx        drop zone, file summary, validation, column guide
     filters/                       FilterBar · MultiSelect (searchable) · DateRangeFilter (presets)
     dashboard/                     Dashboard (story orchestration) · Kpis · SectionHeader
@@ -79,8 +104,10 @@ frontend/
     appendix/Appendix.tsx          returns & inventory · data quality · model details
     ui/primitives.tsx              Button, Surface, Badge, Segmented, InfoTip, Table, Tabs, states
     providers/LocaleProvider.tsx   MN / EN
-  hooks/                           useDataset · useFilters · useAnalytics · useDriverAnalysis · useInsight
-  lib/                             filters · analytics · narrative (data-driven headlines) · format · i18n · api · chartTheme
+    providers/ThemeProvider.tsx    light / dark / system theme (class on <html>, no-flash inline script)
+    providers/AuthProvider.tsx     session (token in localStorage), login / logout, 401 handling
+  hooks/                           useDataset · useFilters · useAnalytics · useDriverAnalysis · useInsight · useForecast
+  lib/                             filters · analytics · narrative (data-driven headlines) · format · i18n · api · auth · chartTheme
   types/index.ts
 ```
 
@@ -116,6 +143,11 @@ npm install
 | `ANTHROPIC_WORKSPACE_ID` | Only for identity-linked keys that require an `anthropic-workspace-id` header. |
 | `MAX_UPLOAD_MB` | Upload size limit (default 15). |
 | `CORS_ORIGINS` | Allowed frontend origins (default `http://localhost:3000`). |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | First administrator, created automatically when the user store is empty. |
+| `USERS_FILE` | Where accounts are stored (default `data/users.json`, git-ignored). Passwords are salted PBKDF2-SHA256 hashes. |
+| `AUTH_SECRET` | Optional fixed secret for signing login tokens; a random one is generated and persisted if empty. |
+| `AUTH_TOKEN_HOURS` | Login token lifetime (default 12). |
+| `AUTH_DISABLED` | `true` opens the API without login. For local demos/tests only. |
 
 Keys are read only on the backend and never sent to the browser. Optionally set
 `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local` if the backend is not on `localhost:8000`.
@@ -129,6 +161,24 @@ cd backend && uvicorn app.main:app --reload --port 8000
 # Terminal 2 - frontend
 cd frontend && npm run dev          # http://localhost:3000
 ```
+
+## Accounts and sign-in
+
+Only administrators create accounts; nobody can register themselves.
+
+```bash
+cd backend
+# first administrator (or set ADMIN_USERNAME / ADMIN_PASSWORD in .env before the first start)
+python -m app.manage create-user admin <password> --admin
+# ordinary users
+python -m app.manage create-user bat.erdene <password>
+python -m app.manage list-users
+```
+
+Administrators also see a **Users** button in the header: create users, reset passwords,
+change roles and delete accounts from the browser. Users sign in on the login screen, and
+the token is kept in the browser until it expires (`AUTH_TOKEN_HOURS`) or the user signs out.
+Signing out clears the loaded dataset from the page.
 
 1. Drop an `.xlsx` (or download the sample). The file is parsed, validated and profiled in about
    a second - rows, period, months, brands, products, channels, recognised / missing columns.
@@ -149,10 +199,11 @@ cd frontend && npm run dev          # http://localhost:3000
 | # | Question | Content |
 |---|---|---|
 | 01 | What happened? | Sales quantity (sell-out / net shipment split), net revenue, gross profit, gross margin, avg net price, MoM - each with a directional comparison |
-| 02 | When? | Monthly trend (current emphasised, last year quiet) with peak / price / stock annotations; diverging variance bars |
-| 03 | Where? | Ranked horizontal bars by channel, brand, product, channel type - size (share) or change (contribution to total change); sell-out vs sell-in panel |
-| 04 | Why might it have happened? | Driver importance (model permutation importance or univariate association), price vs quantity scatter, stock vs sales (indexed), discount bands, promoted vs non-promoted |
-| 05 | So what? | Deterministic key findings + Claude executive insight, top drivers, recommendations, limitations |
+| 02 | Why did sales change? | Variance bridge vs last year / prior period: waterfall from the base total through volume, price, mix, new / discontinued products, discount, promotion and returns effects to the current total (amount, % of base, share of change), plus gainers and losers by channel, brand, product and channel type with growth contribution in points - and a plain-language explanation of both (`lib/bridge.ts`) |
+| 03 | When? | Monthly trend (current emphasised, last year quiet) with peak / price / stock annotations; diverging variance bars |
+| 04 | Where? | Ranked horizontal bars by channel, brand, product, channel type - size (share) or change (contribution to total change); sell-out vs sell-in panel |
+| 05 | Why might it have happened? | Driver importance (model permutation importance or univariate association), price vs quantity scatter, stock vs sales (indexed), discount bands, promoted vs non-promoted |
+| 06 | So what? | Deterministic key findings (incl. the bridge headline) + Claude executive insight, top drivers, recommendations, limitations |
 | A | Appendix | Returns & inventory risk, data quality report and column mapping, model details |
 
 Chart titles are generated from the data ("MUB explains 64% of the decline") and every chart has

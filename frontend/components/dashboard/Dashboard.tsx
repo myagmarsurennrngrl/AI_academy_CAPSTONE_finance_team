@@ -10,6 +10,7 @@ import { SalesTypeSplit } from "@/components/charts/SalesTypeSplit";
 import { StockSalesChart } from "@/components/charts/StockSalesChart";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { VarianceBars } from "@/components/charts/VarianceBars";
+import { BridgePanel } from "@/components/dashboard/BridgePanel";
 import { KpiRow } from "@/components/dashboard/Kpis";
 import { SectionHeader } from "@/components/dashboard/SectionHeader";
 import { FilterBar } from "@/components/filters/FilterBar";
@@ -21,6 +22,7 @@ import { useDriverAnalysis } from "@/hooks/useDriverAnalysis";
 import { useFilters } from "@/hooks/useFilters";
 import { useInsight } from "@/hooks/useInsight";
 import { rankGroups, trendAnnotations, type MetricKey } from "@/lib/analytics";
+import { bridgeNarrative, computeSalesBridge, periodShortLabel } from "@/lib/bridge";
 import { formatDateRange } from "@/lib/format";
 import {
   discountHeadline,
@@ -92,25 +94,35 @@ export function Dashboard({ dataset, rows }: DashboardProps) {
   );
 
   const kpiDeltaFor = (m: MetricKey) => (m === "netSales" ? analytics.kpis.netSales : m === "volume" ? analytics.kpis.volume : analytics.kpis.grossProfit);
+
+  // Variance bridge: why net sales moved vs the comparison window (effects + origins).
+  const bridge = React.useMemo(
+    () => (analytics.comparison && !analytics.isEmpty ? computeSalesBridge(analytics.currentRows, analytics.comparison.rows) : null),
+    [analytics.comparison, analytics.currentRows, analytics.isEmpty]
+  );
+  const currentLabel = analytics.period ? periodShortLabel(analytics.period.from, analytics.period.to, locale) : "";
+  const baseLabel = analytics.comparison ? periodShortLabel(analytics.comparison.from, analytics.comparison.to, locale) : "";
   const annotations = React.useMemo(() => trendAnnotations(analytics.monthly, trendMetric), [analytics.monthly, trendMetric]);
 
-  const bullets = React.useMemo(
-    () =>
-      analytics.isEmpty
-        ? []
-        : executiveBullets(
-            locale,
-            analytics.kpis,
-            effectiveBasis,
-            rankGroups(analytics.byChannel, "netSales", 8, t("where.other")),
-            rankGroups(analytics.byBrand, "netSales", 8, t("where.other")),
-            drivers.data && !drivers.stale ? drivers.data.driver_ranking : null,
-            analytics.priceQty,
-            analytics.stock,
-            analytics.salesType
-          ),
-    [analytics, effectiveBasis, drivers.data, drivers.stale, locale, t]
-  );
+  const bullets = React.useMemo(() => {
+    if (analytics.isEmpty) return [];
+    const list = executiveBullets(
+      locale,
+      analytics.kpis,
+      effectiveBasis,
+      rankGroups(analytics.byChannel, "netSales", 8, t("where.other")),
+      rankGroups(analytics.byBrand, "netSales", 8, t("where.other")),
+      drivers.data && !drivers.stale ? drivers.data.driver_ranking : null,
+      analytics.priceQty,
+      analytics.stock,
+      analytics.salesType
+    );
+    if (bridge) {
+      const n = bridgeNarrative(locale, bridge, currentLabel, baseLabel);
+      list.splice(1, 0, { title: t("section.bridge"), text: `${n.headline} ${n.effects.slice(0, 3).join("; ")}.` });
+    }
+    return list;
+  }, [analytics, effectiveBasis, drivers.data, drivers.stale, locale, t, bridge, currentLabel, baseLabel]);
 
   const periodText = analytics.period ? formatDateRange(analytics.period.from, analytics.period.to, locale) : "—";
   const comparisonText = analytics.comparison
@@ -164,9 +176,15 @@ export function Dashboard({ dataset, rows }: DashboardProps) {
             <KpiRow analytics={analytics} />
           </section>
 
-          {/* 02 — When */}
+          {/* 02 — Why did sales change (variance bridge) */}
+          <section id="bridge" aria-labelledby="bridge-title">
+            <SectionHeader index="02" title={t("section.bridge")} subtitle={t("section.bridge.sub")} />
+            <BridgePanel bridge={bridge} basis={effectiveBasis} currentLabel={currentLabel} baseLabel={baseLabel} periodTooLong={!!analytics.period && analytics.period.days > 366} />
+          </section>
+
+          {/* 03 — When */}
           <section id="when" aria-labelledby="when-title">
-            <SectionHeader index="02" title={t("section.when")} subtitle={t("section.when.sub")} right={<Segmented ariaLabel={t("common.value")} value={trendMetric} onChange={setTrendMetric} options={metricOptions} />} />
+            <SectionHeader index="03" title={t("section.when")} subtitle={t("section.when.sub")} right={<Segmented ariaLabel={t("common.value")} value={trendMetric} onChange={setTrendMetric} options={metricOptions} />} />
             {analytics.monthly.length < 2 ? (
               <StateBox title={t("when.oneMonth")} />
             ) : (
@@ -187,10 +205,10 @@ export function Dashboard({ dataset, rows }: DashboardProps) {
             )}
           </section>
 
-          {/* 03 — Where */}
+          {/* 04 — Where */}
           <section id="where" aria-labelledby="where-title">
             <SectionHeader
-              index="03"
+              index="04"
               title={t("section.where")}
               subtitle={t("section.where.sub")}
               right={
@@ -219,9 +237,9 @@ export function Dashboard({ dataset, rows }: DashboardProps) {
             </div>
           </section>
 
-          {/* 04 — Why */}
+          {/* 05 — Why */}
           <section id="why" aria-labelledby="why-title">
-            <SectionHeader index="04" title={t("section.why")} subtitle={t("section.why.sub")} />
+            <SectionHeader index="05" title={t("section.why")} subtitle={t("section.why.sub")} />
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="lg:col-span-2">
                 <DriverImportanceChart title={drivers.data && !drivers.stale ? driversHeadline(locale, drivers.data.driver_ranking) : t("why.drivers.title")} state={drivers} rowCount={analytics.currentRows.length} />
@@ -233,9 +251,9 @@ export function Dashboard({ dataset, rows }: DashboardProps) {
             </div>
           </section>
 
-          {/* 05 — So what */}
+          {/* 06 — So what */}
           <section id="so" aria-labelledby="so-title">
-            <SectionHeader index="05" title={t("section.so")} subtitle={t("section.so.sub")} />
+            <SectionHeader index="06" title={t("section.so")} subtitle={t("section.so.sub")} />
             <ExecutiveInsight bullets={bullets} insight={insight} currentKey={key} spec={spec} rowCount={analytics.currentRows.length} />
           </section>
 

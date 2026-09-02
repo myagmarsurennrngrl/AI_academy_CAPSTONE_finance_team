@@ -5,15 +5,16 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
+from app.api.deps import get_current_user
 from app.models.schemas import DatasetResponse
 from app.services import analysis_pipeline, session_store
 from app.services.excel_service import ExcelParseError
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["dataset"])
+router = APIRouter(prefix="/api", tags=["dataset"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/dataset/{upload_id}", response_model=DatasetResponse)

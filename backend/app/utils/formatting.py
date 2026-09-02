@@ -58,3 +58,51 @@ def round_metrics(d: dict, decimals: int = 4) -> dict:
         else:
             out[k] = v
     return out
+
+
+def finite(value, default: float = 0.0) -> float:
+    """Coerces a numeric value to a JSON-safe finite float. NaN / +-inf /
+    None / non-numeric values collapse to ``default``."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return default
+    if math.isnan(f) or math.isinf(f):
+        return default
+    return f
+
+
+def finite_or_none(value):
+    """Like :func:`finite` but returns None for non-finite / missing values, for
+    Optional float fields where 'unknown' must not masquerade as 0."""
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(f) or math.isinf(f):
+        return None
+    return f
+
+
+def sanitize_numbers(obj, default=None):
+    """Recursively replaces non-finite floats (NaN, +-inf) anywhere inside a
+    JSON-like structure (dicts / lists / tuples) with ``default``. numpy
+    scalars are converted to plain Python numbers. Never mutates the input."""
+    if isinstance(obj, dict):
+        return {k: sanitize_numbers(v, default) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [sanitize_numbers(v, default) for v in obj]
+    if isinstance(obj, bool) or obj is None or isinstance(obj, (str, int)):
+        return obj
+    if hasattr(obj, "item") and callable(obj.item):  # numpy scalar
+        try:
+            obj = obj.item()
+        except (TypeError, ValueError):
+            return obj
+        if isinstance(obj, bool) or isinstance(obj, (str, int)):
+            return obj
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else default
+    return obj

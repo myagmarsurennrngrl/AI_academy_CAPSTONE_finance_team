@@ -351,3 +351,132 @@ class InsightResponse(BaseModel):
     ai_mongolian: Optional[AIAnalysisResult] = None
     meta: AnalysisMeta
     generated_at: str
+
+
+# ---------------------------------------------------------------------------
+# Forecasting
+# ---------------------------------------------------------------------------
+
+ForecastTarget = Literal["net_sales", "volume_units", "gross_profit"]
+
+
+class ForecastRequest(BaseModel):
+    target: ForecastTarget = "net_sales"
+    # Last month to forecast, inclusive (YYYY-MM). Must be after the data's last month.
+    forecast_until: str = Field(min_length=7, max_length=10)
+    filters: FilterSpec = Field(default_factory=FilterSpec)
+    # A month that ends before month end in the data is excluded from training
+    # unless this is true.
+    include_partial_month: bool = False
+
+
+class HistoryPoint(BaseModel):
+    month: str
+    actual: float
+    # one-step-ahead backtest prediction of the selected model (only inside the backtest window)
+    fitted: Optional[float] = None
+
+
+class ForecastPoint(BaseModel):
+    month: str
+    point: float
+    lower: float
+    upper: float
+
+
+class ForecastBacktestRow(BaseModel):
+    model: str
+    label: str
+    description: str
+    available: bool
+    reason: Optional[str] = None
+    folds: int = 0
+    wape: Optional[float] = None
+    mape: Optional[float] = None
+    mae: Optional[float] = None
+    rmse: Optional[float] = None
+    bias: Optional[float] = None
+    selected: bool = False
+
+
+class ForecastSummary(BaseModel):
+    forecast_total: float
+    forecast_monthly_avg: float
+    last_12_months_total: float
+    same_period_last_year_total: Optional[float] = None
+    same_period_last_year_months: int = 0
+    yoy_change_pct: Optional[float] = None
+    accuracy_wape: Optional[float] = None
+    accuracy_mape: Optional[float] = None
+
+
+class ForecastResponse(BaseModel):
+    target: ForecastTarget
+    scope_label: str
+    filter_row_count: int
+    history_month_min: str
+    history_month_max: str
+    training_months: int
+    partial_last_month_excluded: bool
+    horizon_months: int
+    forecast_until: str
+    selected_model: str
+    selected_label: str
+    selection_reason: str
+    implementation: Optional[str] = None
+    backtest_window_months: int
+    history: List[HistoryPoint]
+    forecast: List[ForecastPoint]
+    backtest: List[ForecastBacktestRow]
+    summary: ForecastSummary
+    notes: List[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Authentication / user administration
+# ---------------------------------------------------------------------------
+
+Role = Literal["admin", "user"]
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class AuthUser(BaseModel):
+    username: str
+    role: Role
+
+
+class UserPublic(AuthUser):
+    created_at: str
+
+
+class LoginResponse(BaseModel):
+    token: str
+    expires_at: str
+    user: UserPublic
+
+
+class UserCreateRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+    role: Role = "user"
+
+
+class PasswordResetRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=256)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+class RoleUpdateRequest(BaseModel):
+    role: Role
+
+
+class UserListResponse(BaseModel):
+    users: List[UserPublic] = Field(default_factory=list)

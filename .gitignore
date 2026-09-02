@@ -36,3 +36,6 @@ Thumbs.db
 # Build artifacts
 dist/
 build/
+
+# User accounts (password hashes + token secret) - never commit
+backend/data/

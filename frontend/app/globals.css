@@ -3,9 +3,107 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
-   Design system tokens live in tailwind.config.js; this file holds base
-   resets and the few utilities Tailwind cannot express.
+   Design tokens. tailwind.config.js maps every color utility onto these
+   variables, so the light palette (:root) and the dark palette (.dark, set on
+   <html> by ThemeProvider) share one set of classes. Values are RGB triplets
+   so Tailwind opacity modifiers keep working; chart colors are plain colors
+   because they are handed to Recharts / SVG as var() strings.
    --------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  --c-ground: 245 246 248;
+  --c-surface: 255 255 255;
+  --c-surface2: 248 249 251;
+  --c-line: 228 231 236;
+  --c-line-strong: 208 213 221;
+  --c-ink-900: 16 24 40;
+  --c-ink-800: 29 41 57;
+  --c-ink-700: 52 64 84;
+  --c-ink-600: 71 84 103;
+  --c-ink-500: 102 112 133;
+  --c-ink-400: 152 162 179;
+  --c-ink-300: 208 213 221;
+  --c-on-ink: 255 255 255;
+  --c-accent: 42 120 214;
+  --c-accent-hover: 31 99 184;
+  --c-accent-soft: 234 242 252;
+  --c-positive: 31 138 91;
+  --c-positive-soft: 232 245 238;
+  --c-negative: 214 69 69;
+  --c-negative-soft: 251 234 234;
+  --c-warning: 154 103 0;
+  --c-warning-soft: 253 243 220;
+
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-pop: 0 8px 24px rgba(16, 24, 40, 0.1), 0 1px 2px rgba(16, 24, 40, 0.06);
+
+  /* Charts (validated pairs on a #ffffff surface) */
+  --chart-primary: #2a78d6;
+  --chart-primary-soft: #cde2fb;
+  --chart-secondary: #eb6834;
+  --chart-comparison: #c3c9d3;
+  --chart-comparison-ink: #7b8494;
+  --chart-positive: #1f8a5b;
+  --chart-negative: #d64545;
+  --chart-neutral: #98a2b3;
+  --chart-ink: #101828;
+  --chart-ink-secondary: #475467;
+  --chart-ink-muted: #8a94a6;
+  --chart-grid: #eceff3;
+  --chart-axis: #d5dae2;
+  --chart-surface: #ffffff;
+  --chart-highlight: #0f4c9a;
+  --chart-cursor: rgba(16, 24, 40, 0.04);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --c-ground: 15 19 25;
+  --c-surface: 22 27 35;
+  --c-surface2: 28 34 44;
+  --c-line: 39 48 64;
+  --c-line-strong: 52 64 84;
+  --c-ink-900: 242 244 247;
+  --c-ink-800: 228 231 236;
+  --c-ink-700: 205 211 221;
+  --c-ink-600: 169 177 191;
+  --c-ink-500: 138 148 166;
+  --c-ink-400: 102 112 133;
+  --c-ink-300: 71 84 103;
+  --c-on-ink: 15 19 25;
+  --c-accent: 91 156 240;
+  --c-accent-hover: 123 176 245;
+  --c-accent-soft: 22 39 61;
+  --c-positive: 63 178 127;
+  --c-positive-soft: 18 40 31;
+  --c-negative: 239 107 107;
+  --c-negative-soft: 51 24 27;
+  --c-warning: 224 176 64;
+  --c-warning-soft: 47 40 18;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+
+  --chart-primary: #5b9cf0;
+  --chart-primary-soft: #1e3a5f;
+  --chart-secondary: #f0895c;
+  --chart-comparison: #3a4557;
+  --chart-comparison-ink: #8a94a6;
+  --chart-positive: #3fb27f;
+  --chart-negative: #ef6b6b;
+  --chart-neutral: #667085;
+  --chart-ink: #f2f4f7;
+  --chart-ink-secondary: #a9b1bf;
+  --chart-ink-muted: #8a94a6;
+  --chart-grid: #232b38;
+  --chart-axis: #344054;
+  --chart-surface: #161b23;
+  --chart-highlight: #8dbcf7;
+  --chart-cursor: rgba(255, 255, 255, 0.05);
+}
 
 @layer base {
   html {
@@ -15,9 +113,10 @@
   body {
     @apply bg-ground text-ink-700 antialiased;
     font-feature-settings: "cv11", "ss01", "calt";
+    transition: background-color 150ms ease, color 150ms ease;
   }
   ::selection {
-    background: rgba(42, 120, 214, 0.18);
+    background: rgb(var(--c-accent) / 0.22);
   }
   h1,
   h2,
@@ -47,6 +146,12 @@
   details[open] > summary::before {
     transform: rotate(45deg) translateY(-2px);
   }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    opacity: 0.6;
+  }
+  .dark input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
 }
 
 @layer utilities {
@@ -55,6 +160,13 @@
   }
   .focus-ring {
     @apply outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-1 focus-visible:ring-offset-surface;
+  }
+  /* Translucent, blurred chrome for the sticky header + filter bar */
+  .glass {
+    @apply border-line/70 bg-surface/60 backdrop-blur-xl backdrop-saturate-150 supports-[not(backdrop-filter:blur(0))]:bg-surface/95;
+  }
+  .glass-ground {
+    @apply border-line/70 bg-ground/60 backdrop-blur-xl backdrop-saturate-150 supports-[not(backdrop-filter:blur(0))]:bg-ground/95;
   }
 }
 
@@ -67,7 +179,7 @@
   font-family: inherit;
 }
 .recharts-cartesian-axis-tick-value {
-  fill: #8a94a6;
+  fill: var(--chart-ink-muted);
 }
 
 ::-webkit-scrollbar {

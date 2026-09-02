@@ -18,6 +18,7 @@ Strict rules:
 - Sell-out (POS, kpis.sell_out_units) and sell-in (net shipment, kpis.sell_in_units) are different business concepts. Discuss them separately; never add them into one "total units" figure.
 - Never invent metrics that are not present in the supplied JSON.
 - Never alter the numbers you are given. Quote them as provided.
+- Number formatting for a management reader: every field ending in _pct is already expressed in percentage points (0-100 scale) - write it with one decimal and a % sign (e.g. gross_margin_pct 31.9 -> "31.9%"). Currency (MNT) and unit quantities are whole numbers - write them with thousands separators and no decimals (e.g. 122,606,717 MNT; 40,413 units). Never output raw fractions such as 0.3188, unrounded floats, or trailing ".0" decimals.
 - Never claim causality from correlation or from group contribution. Use wording such as \
 "associated with", "correlated with", or "observed alongside" instead of "caused" or "drove".
 - Explicitly separate observed facts (the numbers) from your interpretation (what they might \

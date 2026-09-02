@@ -103,7 +103,7 @@ export function VarianceBars({ title, subtitle, points, metric, hasLY }: Varianc
             const showTick = i % labelEvery === 0 || i === data.length - 1;
             return (
               <g key={d.month} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
-                <rect x={cx - slot / 2} y={PAD.top} width={slot} height={plotH} fill={hover === i ? "rgba(16,24,40,0.04)" : "transparent"} />
+                <rect x={cx - slot / 2} y={PAD.top} width={slot} height={plotH} fill={hover === i ? CHART.cursor : "transparent"} />
                 <rect x={cx - barW / 2} y={y} width={barW} height={Math.max(1, h)} rx={2} fill={deltaColor(d.change)} />
                 {showLabel && (
                   <text x={cx} y={d.change >= 0 ? y - 5 : y + h + 12} textAnchor="middle" fontSize={11} fontWeight={500} fill={CHART.inkSecondary}>

@@ -23,6 +23,18 @@ class Settings(BaseSettings):
     max_upload_mb: int = 15
     cors_origins: str = "http://localhost:3000"
 
+    # --- Authentication ---------------------------------------------------
+    # Every analysis endpoint requires a signed-in user. Accounts are created
+    # by an administrator only (no self sign-up). The first administrator is
+    # bootstrapped from ADMIN_USERNAME / ADMIN_PASSWORD when the user store is
+    # empty. AUTH_DISABLED=true opens the API without login (tests / demos).
+    auth_disabled: bool = False
+    users_file: str = "data/users.json"
+    auth_secret: str = ""  # optional; a random secret is generated + persisted if empty
+    auth_token_hours: int = 12
+    admin_username: str = ""
+    admin_password: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

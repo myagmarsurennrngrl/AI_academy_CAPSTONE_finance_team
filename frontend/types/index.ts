@@ -280,3 +280,102 @@ export type DimensionKey = "brands" | "products" | "channels" | "channelTypes" |
 export type Locale = "mn" | "en";
 
 export type ComparisonBasis = "ly" | "prior";
+
+// ---------------------------------------------------------------------------
+// Authentication (mirrors backend/app/models/schemas.py auth section)
+// ---------------------------------------------------------------------------
+
+export type Role = "admin" | "user";
+
+export interface AuthUser {
+  username: string;
+  role: Role;
+}
+
+export interface UserPublic extends AuthUser {
+  created_at: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  expires_at: string;
+  user: UserPublic;
+}
+
+// ---------------------------------------------------------------------------
+// Forecasting (mirrors backend/app/models/schemas.py forecast section)
+// ---------------------------------------------------------------------------
+
+export type ForecastTarget = "net_sales" | "volume_units" | "gross_profit";
+
+export interface ForecastRequest {
+  target: ForecastTarget;
+  /** last month to forecast, inclusive (YYYY-MM) */
+  forecast_until: string;
+  filters: FilterSpec;
+  include_partial_month?: boolean;
+}
+
+export interface HistoryPoint {
+  month: string;
+  actual: number;
+  fitted: number | null;
+}
+
+export interface ForecastPoint {
+  month: string;
+  point: number;
+  lower: number;
+  upper: number;
+}
+
+export interface ForecastBacktestRow {
+  model: string;
+  label: string;
+  description: string;
+  available: boolean;
+  reason: string | null;
+  folds: number;
+  wape: number | null;
+  mape: number | null;
+  mae: number | null;
+  rmse: number | null;
+  bias: number | null;
+  selected: boolean;
+}
+
+export interface ForecastSummary {
+  forecast_total: number;
+  forecast_monthly_avg: number;
+  last_12_months_total: number;
+  same_period_last_year_total: number | null;
+  same_period_last_year_months: number;
+  yoy_change_pct: number | null;
+  accuracy_wape: number | null;
+  accuracy_mape: number | null;
+}
+
+export interface ForecastResponse {
+  target: ForecastTarget;
+  scope_label: string;
+  filter_row_count: number;
+  history_month_min: string;
+  history_month_max: string;
+  training_months: number;
+  partial_last_month_excluded: boolean;
+  horizon_months: number;
+  forecast_until: string;
+  selected_model: string;
+  selected_label: string;
+  selection_reason: string;
+  implementation: string | null;
+  backtest_window_months: number;
+  history: HistoryPoint[];
+  forecast: ForecastPoint[];
+  backtest: ForecastBacktestRow[];
+  summary: ForecastSummary;
+  notes: string[];
+}
+
+/** Which product module the signed-in user is working in. */
+export type AppModule = "drivers" | "forecast";

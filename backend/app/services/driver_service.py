@@ -44,7 +44,7 @@ from app.models.schemas import (
     StatisticalModelResult,
 )
 from app.utils.derive import derive_core_fields
-from app.utils.formatting import safe_div
+from app.utils.formatting import finite, finite_or_none, safe_div
 
 TARGET_FIELD = "volume_units"
 
@@ -100,14 +100,14 @@ def compute_correlations(d: pd.DataFrame, target_field: Optional[str] = None) ->
         if field not in d.columns:
             continue
         series = pd.to_numeric(d[field], errors="coerce")
-        paired = pd.concat([series, target], axis=1).dropna()
+        paired = pd.concat([series, target], axis=1).replace([np.inf, -np.inf], np.nan).dropna()
         n = len(paired)
         pearson = spearman = None
         if n >= 3 and paired.iloc[:, 0].std() > 0 and paired.iloc[:, 1].std() > 0:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                pearson = float(stats.pearsonr(paired.iloc[:, 0], paired.iloc[:, 1])[0])
-                spearman = float(stats.spearmanr(paired.iloc[:, 0], paired.iloc[:, 1])[0])
+                pearson = finite_or_none(stats.pearsonr(paired.iloc[:, 0], paired.iloc[:, 1])[0])
+                spearman = finite_or_none(stats.spearmanr(paired.iloc[:, 0], paired.iloc[:, 1])[0])
         results.append({"field": field, "pearson": pearson, "spearman": spearman, "n": n})
     return results
 
@@ -119,7 +119,7 @@ def compute_correlations(d: pd.DataFrame, target_field: Optional[str] = None) ->
 def compute_group_analysis(d: pd.DataFrame, group_field: str, top_n: int = TOP_N) -> List[GroupAnalysisRow]:
     if group_field not in d.columns or d.empty:
         return []
-    total_net_sales = float(d["net_sales"].sum())
+    total_net_sales = finite(d["net_sales"].sum())
     grouped = d.groupby(group_field, dropna=True).agg(
         net_sales=("net_sales", "sum"),
         net_qty=("net_qty", "sum"),
@@ -139,15 +139,15 @@ def compute_group_analysis(d: pd.DataFrame, group_field: str, top_n: int = TOP_N
         rows.append(
             GroupAnalysisRow(
                 group=str(name),
-                net_sales=float(r["net_sales"]),
-                share_of_sales_pct=safe_div(float(r["net_sales"]), total_net_sales),
-                net_qty=float(r["net_qty"]),
-                volume_units=float(r["volume_units"]),
-                gross_profit=float(r["gross_profit"]),
-                gross_margin_pct=gross_margin_pct,
-                return_rate_pct=return_rate_pct,
-                avg_discount_pct=float(r["discount_pct"]) if not pd.isna(r["discount_pct"]) else 0.0,
-                avg_promotion_pct=float(r["promotion_pct"]) if not pd.isna(r["promotion_pct"]) else 0.0,
+                net_sales=finite(r["net_sales"]),
+                share_of_sales_pct=safe_div(finite(r["net_sales"]), total_net_sales),
+                net_qty=finite(r["net_qty"]),
+                volume_units=finite(r["volume_units"]),
+                gross_profit=finite(r["gross_profit"]),
+                gross_margin_pct=finite(gross_margin_pct),
+                return_rate_pct=finite(return_rate_pct),
+                avg_discount_pct=finite(r["discount_pct"]),
+                avg_promotion_pct=finite(r["promotion_pct"]),
             )
         )
     return rows
@@ -166,9 +166,9 @@ def compute_promotion_comparison(d: pd.DataFrame) -> List[PromotionComparisonRow
         subset = d[mask]
         if subset.empty:
             continue
-        avg_units = float(subset["net_qty"].mean())
-        avg_net_sales = float(subset["net_sales"].mean())
-        avg_gross_profit = float(subset["gross_profit"].mean())
+        avg_units = finite(subset["net_qty"].mean())
+        avg_net_sales = finite(subset["net_sales"].mean())
+        avg_gross_profit = finite(subset["gross_profit"].mean())
         avg_margin = safe_div(float(subset["gross_profit"].sum()), float(subset["net_sales"].sum()))
         avg_price = safe_div(float(subset["gross_sales"].sum()), float(subset["qty"].sum())) if "qty" in subset.columns else 0.0
         return_rate = (
@@ -217,9 +217,9 @@ def compute_discount_bands(d: pd.DataFrame) -> List[DiscountBandRow]:
         rows.append(
             DiscountBandRow(
                 band=label,
-                net_sales=float(r["net_sales"]),
-                net_qty=float(r["net_qty"]),
-                gross_profit=float(r["gross_profit"]),
+                net_sales=finite(r["net_sales"]),
+                net_qty=finite(r["net_qty"]),
+                gross_profit=finite(r["gross_profit"]),
                 gross_margin_pct=safe_div(float(r["gross_profit"]), float(r["net_sales"])),
                 row_count=int(r["row_count"]),
             )
@@ -245,17 +245,17 @@ def compute_return_risk(d: pd.DataFrame, top_n: int = TOP_N) -> List[ReturnRiskR
             net_sales=("net_sales", "sum"),
         )
         grouped = grouped[grouped["qty"] > 0]
-        grouped["return_rate"] = grouped["return_qty"] / grouped["qty"]
+        grouped["return_rate"] = (grouped["return_qty"] / grouped["qty"]).replace([np.inf, -np.inf], np.nan).fillna(0.0)
         top = grouped.sort_values("return_rate", ascending=False).head(top_n)
         for name, r in top.iterrows():
             rows.append(
                 ReturnRiskRow(
                     name=str(name),
                     dimension=dim,  # type: ignore[arg-type]
-                    return_rate_pct=float(r["return_rate"]),
-                    returned_units=float(r["return_qty"]),
-                    refund_amount=float(r["refund_amt"]),
-                    net_sales=float(r["net_sales"]),
+                    return_rate_pct=finite(r["return_rate"]),
+                    returned_units=finite(r["return_qty"]),
+                    refund_amount=finite(r["refund_amt"]),
+                    net_sales=finite(r["net_sales"]),
                 )
             )
     return rows
@@ -273,6 +273,7 @@ def compute_inventory_risk(d: pd.DataFrame, top_n: int = TOP_N) -> List[Inventor
         stock_available=("stock_available", "mean"),
         net_qty=(volume_col, "sum"),
     )
+    grouped = grouped.replace([np.inf, -np.inf], np.nan).dropna(subset=["stock_available", "net_qty"])
     if grouped.empty:
         return []
     stock_median = grouped["stock_available"].median()
@@ -291,8 +292,8 @@ def compute_inventory_risk(d: pd.DataFrame, top_n: int = TOP_N) -> List[Inventor
         rows.append(
             InventoryRiskRow(
                 product=str(name),
-                stock_available=float(r["stock_available"]),
-                net_qty=float(r["net_qty"]),
+                stock_available=finite(r["stock_available"]),
+                net_qty=finite(r["net_qty"]),
                 risk="low_stock_high_sales",
             )
         )
@@ -300,8 +301,8 @@ def compute_inventory_risk(d: pd.DataFrame, top_n: int = TOP_N) -> List[Inventor
         rows.append(
             InventoryRiskRow(
                 product=str(name),
-                stock_available=float(r["stock_available"]),
-                net_qty=float(r["net_qty"]),
+                stock_available=finite(r["stock_available"]),
+                net_qty=finite(r["net_qty"]),
                 risk="high_stock_low_sales",
             )
         )
@@ -324,6 +325,8 @@ def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
     categorical_features = [f for f in CATEGORICAL_DRIVERS if f in d.columns]
 
     model_df = d[numeric_features + categorical_features + [target]].copy()
+    for c in numeric_features + [target]:
+        model_df[c] = pd.to_numeric(model_df[c], errors="coerce").replace([np.inf, -np.inf], np.nan)
     if "date" in d.columns:
         dates = pd.to_datetime(d["date"], errors="coerce")
         model_df["date"] = dates
@@ -399,15 +402,15 @@ def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
     ridge.fit(X_train, y_train)
     y_pred = ridge.predict(X_test)
 
-    mae = float(mean_absolute_error(y_test, y_pred))
-    rmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))
-    r2 = float(r2_score(y_test, y_pred)) if len(set(y_test)) > 1 else None
+    mae = finite_or_none(mean_absolute_error(y_test, y_pred))
+    rmse = finite_or_none(np.sqrt(mean_squared_error(y_test, y_pred)))
+    r2 = finite_or_none(r2_score(y_test, y_pred)) if len(set(y_test)) > 1 else None
 
     feature_names = ridge.named_steps["prep"].get_feature_names_out()
     coefs = ridge.named_steps["model"].coef_
     coefficients = [
-        {"feature": str(name), "standardized_coefficient": float(coef)}
-        for name, coef in sorted(zip(feature_names, coefs), key=lambda t: -abs(t[1]))[:25]
+        {"feature": str(name), "standardized_coefficient": finite(coef)}
+        for name, coef in sorted(zip(feature_names, coefs), key=lambda t: -abs(finite(t[1])))[:25]
     ]
 
     notes = [validation_note]
@@ -437,11 +440,11 @@ def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
         )
         rf.fit(X_train, y_train)
         y_pred_rf = rf.predict(X_test)
-        rf_r2 = r2_score(y_test, y_pred_rf) if len(set(y_test)) > 1 else -np.inf
-        if r2 is None or rf_r2 > r2:
-            mae = float(mean_absolute_error(y_test, y_pred_rf))
-            rmse = float(np.sqrt(mean_squared_error(y_test, y_pred_rf)))
-            r2 = float(rf_r2)
+        rf_r2 = finite_or_none(r2_score(y_test, y_pred_rf)) if len(set(y_test)) > 1 else None
+        if rf_r2 is not None and (r2 is None or rf_r2 > r2):
+            mae = finite_or_none(mean_absolute_error(y_test, y_pred_rf))
+            rmse = finite_or_none(np.sqrt(mean_squared_error(y_test, y_pred_rf)))
+            r2 = rf_r2
             model_type = "RandomForestRegressor (with permutation importance)"
 
         with warnings.catch_warnings():
@@ -451,10 +454,10 @@ def build_statistical_model(d: pd.DataFrame) -> StatisticalModelResult:
             )
         rf_feature_names = rf.named_steps["prep"].get_feature_names_out()
         permutation_importances = [
-            {"feature": str(name), "importance_mean": float(m), "importance_std": float(s)}
+            {"feature": str(name), "importance_mean": finite(m), "importance_std": finite(s)}
             for name, m, s in sorted(
                 zip(rf_feature_names, perm.importances_mean, perm.importances_std),
-                key=lambda t: -t[1],
+                key=lambda t: -finite(t[1]),
             )
         ]
     else:
@@ -524,21 +527,21 @@ def compute_eta_squared(d: pd.DataFrame, fields: List[str], target_field: Option
     out: Dict[str, float] = {}
     if d.empty or target_field not in d.columns:
         return out
-    y = pd.to_numeric(d[target_field], errors="coerce")
-    total_ss = float(((y - y.mean()) ** 2).sum())
+    y = pd.to_numeric(d[target_field], errors="coerce").replace([np.inf, -np.inf], np.nan)
+    total_ss = finite(((y - y.mean()) ** 2).sum())
     if total_ss <= 0:
         return out
     for field in fields:
         if field not in d.columns:
             continue
         groups = y.groupby(d[field].astype(str))
-        between = float(((groups.transform("mean") - y.mean()) ** 2).sum())
+        between = finite(((groups.transform("mean") - y.mean()) ** 2).sum())
         out[field] = max(0.0, min(1.0, between / total_ss))
     if "date" in d.columns:
         months = pd.to_datetime(d["date"], errors="coerce").dt.month
         if len(months) and months.notna().all():
             groups = y.groupby(months.astype(int))
-            between = float(((groups.transform("mean") - y.mean()) ** 2).sum())
+            between = finite(((groups.transform("mean") - y.mean()) ** 2).sum())
             out[SEASONALITY_FEATURE] = max(0.0, min(1.0, between / total_ss))
     return out
 
@@ -557,7 +560,7 @@ def build_driver_ranking(
         spearman = c["spearman"]
         pearson = c["pearson"]
         perm = _permutation_score_for_field(model, c["field"])
-        raw = perm if basis == BASIS_MODEL else (spearman or 0.0) ** 2
+        raw = finite(perm if basis == BASIS_MODEL else (spearman or 0.0) ** 2)
         evidence: List[str] = []
         if pearson is not None:
             evidence.append(f"Pearson r = {pearson:.2f} with sales quantity (n={c['n']}).")
@@ -595,8 +598,8 @@ def build_driver_ranking(
     for field in categorical_fields:
         rows = group_analyses.get(field) or []
         perm = _permutation_score_for_field(model, field)
-        eta = float(eta_squared.get(field, 0.0))
-        raw = perm if basis == BASIS_MODEL else eta
+        eta = finite(eta_squared.get(field, 0.0))
+        raw = finite(perm if basis == BASIS_MODEL else eta)
         if raw <= 0 and not rows:
             continue
         evidence = []
@@ -626,7 +629,7 @@ def build_driver_ranking(
     max_raw = max((c["raw"] for c in candidates), default=0.0)
     entries: List[DriverEvidence] = []
     for c in candidates:
-        score = round((c["raw"] / max_raw) * 100, 1) if max_raw > 0 else 0.0
+        score = finite(round((c["raw"] / max_raw) * 100, 1)) if max_raw > 0 else 0.0
         entries.append(
             DriverEvidence(
                 driver=c["driver"],

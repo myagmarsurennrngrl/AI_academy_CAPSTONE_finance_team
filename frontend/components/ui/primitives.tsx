@@ -185,7 +185,7 @@ export function InfoTip({ text, className }: { text: string; className?: string 
         <span
           role="tooltip"
           id={id}
-          className="absolute bottom-full left-1/2 z-30 mb-2 w-64 -translate-x-1/2 rounded-ctl bg-ink-900 px-3 py-2 text-xs font-normal leading-relaxed text-white shadow-pop"
+          className="absolute bottom-full left-1/2 z-30 mb-2 w-64 -translate-x-1/2 rounded-ctl bg-ink-900 px-3 py-2 text-xs font-normal leading-relaxed text-onInk shadow-pop"
         >
           {text}
         </span>

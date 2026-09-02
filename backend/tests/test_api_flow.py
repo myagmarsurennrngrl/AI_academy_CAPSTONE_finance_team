@@ -17,6 +17,7 @@ SAMPLE = os.path.join(os.path.dirname(__file__), "..", "app", "static", "sample_
 def client(monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "use_mock_ai", True)
+    monkeypatch.setattr(settings, "auth_disabled", True)
     return TestClient(app)
 
 
