@@ -1,0 +1,57 @@
+# Densmaa 1.0 - production compose (Dokploy / any Docker host).
+#
+# Variables come from the deployment's environment (.env next to this file, or
+# the Environment tab in Dokploy). Neither service publishes host ports: the
+# platform's reverse proxy (Traefik in Dokploy) routes domains to
+# frontend:3000 and backend:8000 over the compose network.
+#
+#   frontend  https://densmaa.example.mn        -> frontend service, port 3000
+#   backend   https://api.densmaa.example.mn    -> backend service,  port 8000
+#
+# Set NEXT_PUBLIC_API_BASE_URL to the backend's public URL (build-time) and add
+# the frontend's public origin to CORS_ORIGINS. For a single-domain setup route
+# /api/* to the backend instead and leave NEXT_PUBLIC_API_BASE_URL empty.
+services:
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-fable-5}
+      ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-terra}
+      USE_MOCK_AI: ${USE_MOCK_AI:-false}
+      USE_OPENAI_FOR_ANALYSIS: ${USE_OPENAI_FOR_ANALYSIS:-false}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-15}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # authentication
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      AUTH_TOKEN_HOURS: ${AUTH_TOKEN_HOURS:-12}
+      AUTH_DISABLED: ${AUTH_DISABLED:-false}
+      USERS_FILE: /app/data/users.json
+    volumes:
+      - densmaa-users:/app/data
+    expose:
+      - "8000"
+    # ports:            # only for running this compose locally without a proxy
+    #   - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+    # ports:
+    #   - "3000:3000"
+
+volumes:
+  densmaa-users:

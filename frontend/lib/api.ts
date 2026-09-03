@@ -16,7 +16,9 @@ import type {
 // The frontend calls the backend origin directly (CORS-enabled) instead of
 // proxying through Next's dev server: the AI insight call can run past a
 // minute and the rewrite proxy was observed to drop long requests.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+// Unset -> local dev default. Set to "" at build time -> same-origin /api (reverse
+// proxy routes it to the backend). Set to a URL -> that backend origin (CORS).
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export class ApiError extends Error {
   status: number;

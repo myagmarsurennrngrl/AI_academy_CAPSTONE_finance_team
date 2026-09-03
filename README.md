@@ -194,6 +194,68 @@ Signing out clears the loaded dataset from the page.
 5. When filters change, the AI narrative is marked stale; **Regenerate for current selection**
    sends the exact same filter to the backend.
 
+## Deploying with Docker / Dokploy
+
+The repo ships production Dockerfiles and a compose file:
+
+```
+backend/Dockerfile      python:3.12-slim · uvicorn on :8000 · /app/data volume for user accounts
+frontend/Dockerfile     node:20-alpine · Next.js standalone build on :3000
+docker-compose.yml      both services, no published ports (the platform's proxy routes domains)
+```
+
+`NEXT_PUBLIC_API_BASE_URL` is baked into the frontend **at build time**: set it to the backend's
+public URL (two domains, CORS) or leave it empty to call `/api` on the same origin (one domain,
+route `/api/*` to the backend in the proxy).
+
+### Dokploy step by step
+
+1. **Git provider** - Dashboard → Settings → Git Providers → *GitHub* → *Create GitHub App*,
+   install it on the GitHub account/organisation that owns this repository and grant access to
+   `AI_academy_CAPSTONE_finance_team`. (Alternatively skip this and use a public Git URL.)
+2. **Project** - Projects → *Create Project* (e.g. `densmaa`).
+3. **Service** - inside the project → *Create Service* → **Compose**.
+   *Provider* = GitHub (the app from step 1), repository = this repo, branch = `main`,
+   *Compose path* = `./docker-compose.yml`.
+4. **Environment** tab - paste the variables (they are substituted into the compose file):
+
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   OPENAI_API_KEY=sk-...
+   ADMIN_USERNAME=admin
+   ADMIN_PASSWORD=<strong password>
+   AUTH_SECRET=<long random string>
+   CORS_ORIGINS=https://densmaa.<your-domain>
+   NEXT_PUBLIC_API_BASE_URL=https://api.densmaa.<your-domain>
+   ```
+   `USE_MOCK_AI=true` is a free way to check the deployment before spending API credits.
+5. **Domains** tab - add two domains and point their DNS (A records) at the Dokploy server:
+
+   | Domain | Service name | Container port | HTTPS |
+   |---|---|---|---|
+   | `densmaa.<your-domain>` | `frontend` | 3000 | Let's Encrypt |
+   | `api.densmaa.<your-domain>` | `backend` | 8000 | Let's Encrypt |
+
+   The frontend and backend domains must match `NEXT_PUBLIC_API_BASE_URL` and `CORS_ORIGINS`
+   exactly (scheme + host, no trailing slash).
+6. **Deploy** - press *Deploy*; Dokploy clones the repo, builds both images and starts them.
+   Turn on *Auto Deploy* (webhook) so every push to `main` redeploys. Check
+   `https://api.densmaa.<your-domain>/api/health` - it should answer `"auth_required": true` -
+   then sign in on the frontend with `ADMIN_USERNAME` / `ADMIN_PASSWORD` and create users in
+   the **Users** panel.
+
+Accounts persist in the `densmaa-users` volume across redeploys. Changing
+`NEXT_PUBLIC_API_BASE_URL` requires a rebuild of the frontend (Dokploy does this on the next
+deploy). The AI insight call can take 1-3 minutes; Traefik does not time out backend responses
+by default, so no extra proxy settings are needed.
+
+### Plain Docker (any VPS)
+
+```bash
+cp .env.example .env          # fill in keys, admin credentials, domains
+docker compose up -d --build  # then put nginx / Caddy / Traefik in front of :3000 and :8000
+```
+
 ## The story (dashboard sections)
 
 | # | Question | Content |
