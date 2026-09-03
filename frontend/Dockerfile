@@ -16,7 +16,8 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# public/ may be absent in a fresh clone (empty folders are not tracked by git)
+RUN mkdir -p public && npm run build
 
 FROM node:20-alpine AS run
 WORKDIR /app

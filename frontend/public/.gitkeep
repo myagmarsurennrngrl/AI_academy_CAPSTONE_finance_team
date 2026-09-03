@@ -1,0 +1,1 @@
+# Static assets served from / (favicon, images). Kept so the folder exists in git and in the Docker build.
