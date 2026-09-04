@@ -379,3 +379,39 @@ export interface ForecastResponse {
 
 /** Which product module the signed-in user is working in. */
 export type AppModule = "drivers" | "forecast";
+
+// ---------------------------------------------------------------------------
+// AI data assistant (mirrors backend/app/models/schemas.py chat section)
+// ---------------------------------------------------------------------------
+
+export type ChatRole = "user" | "assistant";
+
+export interface ChatMessage {
+  role: ChatRole;
+  content: string;
+}
+
+export interface ChatRequest {
+  messages: ChatMessage[];
+  locale: Locale;
+  /** the dashboard's active filter - the assistant's default scope */
+  filters: FilterSpec;
+  module: AppModule;
+}
+
+export interface ChatToolCall {
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface ChatMeta {
+  mock_ai: boolean;
+  model: string;
+  tool_rounds: number;
+}
+
+export interface ChatResponse {
+  answer: string;
+  tool_calls: ChatToolCall[];
+  meta: ChatMeta;
+}

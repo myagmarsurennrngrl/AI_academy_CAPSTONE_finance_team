@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import analysis, auth, dataset, forecast, upload
+from app.api.routes import analysis, auth, chat, dataset, forecast, upload
 from app.config import get_settings
 from app.services.auth_service import bootstrap_admin
 
@@ -38,6 +38,7 @@ app.include_router(upload.router)
 app.include_router(dataset.router)
 app.include_router(analysis.router)
 app.include_router(forecast.router)
+app.include_router(chat.router)
 
 
 @app.get("/api/health")
@@ -46,6 +47,8 @@ async def health():
         "status": "ok",
         "auth_required": not settings.auth_disabled,
         "mock_ai": settings.use_mock_ai,
+        # which provider writes the English analysis (translation + chat are always OpenAI)
+        "analysis_provider": "openai" if settings.use_openai_for_analysis else "anthropic",
         "anthropic_model": settings.anthropic_model,
         "openai_model": settings.openai_model,
     }

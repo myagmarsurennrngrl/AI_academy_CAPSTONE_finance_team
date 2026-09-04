@@ -11,6 +11,11 @@ Sign in, pick a module, upload an Excel sales dataset:
   trend + seasonality regression, XGBoost on lag features) are backtested with a rolling origin
   on the file's own history; the one with the lowest WAPE is refit and used, with an 80% band
   from its backtest errors and a transparent comparison table.
+* **Ask the data (AI chat)** - a floating assistant in the bottom-right corner of both modules. It
+  answers free-form questions ("how much did product X grow in 2025 vs 2024?", "which channel leads?",
+  "forecast for the next 3 months?") **only from the uploaded file**: the model can call four
+  deterministic pandas tools and nothing else, every number in the reply comes from a tool result,
+  and off-topic questions are declined.
 
 > AI_academy_CAPSTONE_finance_team - a group capstone project applying AI to real finance
 > workflows and data.
@@ -27,7 +32,9 @@ Excel upload ──► parse + validate + clean (pandas)
                  │
                  ├─► POST /api/analysis/{id}/insight   same filter ─► compact JSON ─► Claude (EN) ─► OpenAI (MN)
                  │
-                 └─► POST /api/forecast/{id}            target + last month + filter ─► monthly series ─► backtest 6 methods ─► best forecast
+                 ├─► POST /api/forecast/{id}            target + last month + filter ─► monthly series ─► backtest 6 methods ─► best forecast
+                 │
+                 └─► POST /api/chat/{id}                question + filter ─► OpenAI picks tools ─► pandas computes ─► answer from those numbers only
 ```
 
 **One source of truth for filtering.** The dashboard receives the cleaned, derived dataset once
@@ -45,6 +52,16 @@ becomes percentage points with one decimal, currency and unit figures become who
 the narrative reads "31.9%" and "122,606,717", never "0.3187762" or "122606717.0". OpenAI only
 translates Claude's finished analysis and must preserve those figures.
 
+**The chat assistant can only call tools.** `POST /api/chat/{id}` gives the model four function
+tools (`backend/app/services/chat_tools.py`): `aggregate` (totals by dimension and/or month /
+quarter / year, with shares), `compare_periods` (any two periods - `2025` vs `2024`, `2026-06` vs
+`2026-05`, `2026-Q2` vs `2026-Q1` - with percentage change and how many months of each period the
+data actually covers), `search_values` (exact spelling of a brand / product / channel) and
+`forecast` (the Forecast module's engine). Tool filters go through the same `apply_filters`, the
+dashboard's active filter is sent as the default scope, and results are rounded before the model
+sees them. The model never receives raw rows and never executes code; the reply lists how many
+data queries it is based on. `USE_MOCK_AI=true` returns an offline answer built from the real totals.
+
 **Only signed-in users can analyse.** There is no self sign-up: an administrator creates each
 account (username + password) in the **Users** panel or with `python -m app.manage`. Every
 upload / dataset / analysis endpoint requires the bearer token issued by `POST /api/auth/login`.
@@ -58,8 +75,10 @@ shown side by side and never summed into one undifferentiated figure.
 
 - **Frontend**: Next.js 14 (App Router) · TypeScript · Tailwind CSS (CSS-variable palette, light + dark mode) · Recharts · lucide-react
 - **Backend**: FastAPI · pandas · numpy · scikit-learn · xgboost · scipy · pydantic · openpyxl
-- **AI**: Anthropic API (`claude-fable-5`) for analysis, OpenAI Responses API (`gpt-5.6-terra`)
-  for Mongolian translation - both configurable via `.env`, both mockable (`USE_MOCK_AI=true`)
+- **AI**: OpenAI Responses API (`gpt-5.6-terra`) for the English analysis, the Mongolian
+  translation and the chat assistant (function calling). The Anthropic path (`claude-fable-5`) for
+  the English analysis is kept and re-enabled with `USE_OPENAI_FOR_ANALYSIS=false`. Both
+  configurable via `.env`, everything mockable (`USE_MOCK_AI=true`)
 
 ## Project layout
 
@@ -68,7 +87,7 @@ backend/
   app/
     main.py                        FastAPI wiring (CORS, routers)
     config.py                      Settings from .env
-    api/routes/                    auth.py · upload.py · dataset.py · analysis.py · forecast.py
+    api/routes/                    auth.py · upload.py · dataset.py · analysis.py · forecast.py · chat.py
     api/deps.py                    get_current_user / require_admin (bearer token)
     services/
       excel_service.py             read workbook, map columns, profile
@@ -79,6 +98,8 @@ backend/
       analysis_pipeline.py         orchestration: prepare · dataset · drivers · insight
       forecast_service.py          monthly series, 6 candidate methods, rolling backtest, selection, intervals
       compact_payload.py           Top-N JSON sent to Claude (with analysis_scope)
+      chat_tools.py                deterministic chat tools: aggregate · compare_periods · search_values · forecast
+      chat_service.py              OpenAI function-calling loop, system prompt, mock answer
       anthropic_service.py · openai_service.py · mock_ai.py · session_store.py
       auth_service.py                file-backed user store (PBKDF2 hashes), HMAC-signed login tokens
     manage.py                      CLI: create-user · list-users · set-password · delete-user
@@ -101,12 +122,13 @@ frontend/
                                    RankedBars · SalesTypeSplit · PriceQuantityScatter ·
                                    DriverImportanceChart · StockSalesChart · PricingPanels
     insight/ExecutiveInsight.tsx   deterministic findings + AI narrative (scope-aware, MN/EN)
+    chat/ChatWidget.tsx            floating AI data assistant (bottom-right, both modules), scoped to the active filter
     appendix/Appendix.tsx          returns & inventory · data quality · model details
     ui/primitives.tsx              Button, Surface, Badge, Segmented, InfoTip, Table, Tabs, states
     providers/LocaleProvider.tsx   MN / EN
     providers/ThemeProvider.tsx    light / dark / system theme (class on <html>, no-flash inline script)
     providers/AuthProvider.tsx     session (token in localStorage), login / logout, 401 handling
-  hooks/                           useDataset · useFilters · useAnalytics · useDriverAnalysis · useInsight · useForecast
+  hooks/                           useDataset · useFilters · useAnalytics · useDriverAnalysis · useInsight · useForecast · useChat
   lib/                             filters · analytics · narrative (data-driven headlines) · format · i18n · api · auth · chartTheme
   types/index.ts
 ```
@@ -139,7 +161,7 @@ npm install
 | `OPENAI_API_KEY` | OpenAI API key (Mongolian translation). Required unless `USE_MOCK_AI=true`. |
 | `OPENAI_MODEL` | Defaults to `gpt-5.6-terra`. |
 | `USE_MOCK_AI` | `true` → both AI stages return realistic mock output built from the real numbers. Free, offline. |
-| `USE_OPENAI_FOR_ANALYSIS` | Stopgap only: OpenAI performs both stages, bypassing Anthropic. |
+| `USE_OPENAI_FOR_ANALYSIS` | Default `true`: OpenAI performs both AI stages (the Anthropic API is currently unreachable for this deployment). Set `false` to have Claude write the English analysis again. The chat assistant always uses OpenAI. |
 | `ANTHROPIC_WORKSPACE_ID` | Only for identity-linked keys that require an `anthropic-workspace-id` header. |
 | `MAX_UPLOAD_MB` | Upload size limit (default 15). |
 | `CORS_ORIGINS` | Allowed frontend origins (default `http://localhost:3000`). |
@@ -272,6 +294,29 @@ Chart titles are generated from the data ("MUB explains 64% of the decline") and
 a table twin. Vocabulary is strictly associative ("associated with", "model importance") - never
 causal.
 
+## Ask the data (AI chat)
+
+The **AI туслах / Ask the data** button sits in the bottom-right corner of the Sales drivers
+dashboard and the Forecast module. It opens a small conversation panel that shows the scope it will
+use (the module's active filter, or "Full dataset") and three example questions built from the
+file's own product names and months.
+
+How a question is answered:
+
+1. The browser sends the last 20 messages, the UI language and the active `FilterSpec` to
+   `POST /api/chat/{upload_id}` (login required, same as every analysis call).
+2. The backend gives OpenAI a system prompt with the dataset's columns, months, brands, products,
+   channels and the available measures, plus the four tools. The model may call tools for up to 8
+   rounds; each call is validated (pydantic), executed in pandas and returned rounded (currency and
+   units to whole numbers, percentages to one decimal, percentage points for margin changes).
+3. The model writes the reply in the language of the question, naming the measure, period and
+   scope it used. Periods only partly covered by the data are flagged ("2026 has data for 4 of 12
+   months"). Names typed loosely are matched case-insensitively or resolved with `search_values`.
+
+Verified live on the sample file: "Aurora брэндийн 2026 оны 6-р сарын цэвэр борлуулалт 5-р сартай
+харьцуулахад хэдэн хувиар өөрчлөгдсөн бэ?" → `compare_periods` → "+10.8% (₮6,616,513 vs
+₮5,973,948)", matching an independent pandas computation; a general-knowledge question is declined.
+
 ## Expected Excel structure
 
 Column names are matched flexibly ("Unit Price" → `sale_price`, "Sales Channel" → `sales_channel`).
@@ -285,7 +330,7 @@ refund_amount, net_sales, sale_price_net, return_qty_units`
 ## Tests and verification
 
 ```bash
-cd backend && pytest -q            # 42 tests: mapping, validation, KPIs, drivers, filters, API flow (AI mocked)
+cd backend && pytest -q            # 84 tests: mapping, validation, KPIs, drivers, forecast, filters, auth, chat tools + tool loop, API flow (AI mocked)
 cd frontend && npx tsc --noEmit && npm run lint && npm run build
 ```
 
@@ -304,3 +349,6 @@ invalid-file and missing-column states; zero console errors on the production bu
 - Year-over-year comparison needs a selected period of at most 12 months with last-year data;
   otherwise the prior-period basis (or MoM only) is offered.
 - `npm audit` reports Next.js 14 advisories with no 14.x fix; acceptable for local/academic use.
+- The chat assistant keeps the conversation in the browser only (the last 20 messages are re-sent
+  with each question) and answers from the same in-memory dataset; each question costs one or more
+  OpenAI calls (typically 3-12 seconds).

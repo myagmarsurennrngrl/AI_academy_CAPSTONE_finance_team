@@ -3,6 +3,7 @@
 import * as React from "react";
 import { CheckCircle2, Info, RotateCcw } from "lucide-react";
 import { ForecastChart } from "@/components/charts/ForecastChart";
+import { ChatWidget } from "@/components/chat/ChatWidget";
 import { KpiTile } from "@/components/dashboard/Kpis";
 import { SectionHeader } from "@/components/dashboard/SectionHeader";
 import { MultiSelect } from "@/components/filters/MultiSelect";
@@ -304,6 +305,9 @@ export function ForecastView({ dataset }: Props) {
           <p className="border-t border-line pt-4 text-[11px] leading-relaxed text-ink-400">{t("forecast.disclaimer")}</p>
         </div>
       )}
+
+      {/* AI data assistant - answers only from this dataset, scoped to the forecast's filter */}
+      <ChatWidget uploadId={dataset.upload_id} dataset={dataset} spec={req.filters} module="forecast" />
     </div>
   );
 }

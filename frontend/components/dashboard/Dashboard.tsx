@@ -10,6 +10,7 @@ import { SalesTypeSplit } from "@/components/charts/SalesTypeSplit";
 import { StockSalesChart } from "@/components/charts/StockSalesChart";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { VarianceBars } from "@/components/charts/VarianceBars";
+import { ChatWidget } from "@/components/chat/ChatWidget";
 import { BridgePanel } from "@/components/dashboard/BridgePanel";
 import { KpiRow } from "@/components/dashboard/Kpis";
 import { SectionHeader } from "@/components/dashboard/SectionHeader";
@@ -266,6 +267,9 @@ export function Dashboard({ dataset, rows }: DashboardProps) {
           <p className="border-t border-line pt-4 text-[11px] leading-relaxed text-ink-400">{t("common.disclaimer")}</p>
         </div>
       )}
+
+      {/* AI data assistant - answers only from this dataset, scoped to the active filter */}
+      <ChatWidget uploadId={dataset.upload_id} dataset={dataset} spec={spec} module="drivers" />
     </>
   );
 }

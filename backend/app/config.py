@@ -14,11 +14,12 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.6-terra"
 
     use_mock_ai: bool = False
-    # Temporary workaround flag: when true, OpenAI generates BOTH the English
+    # When true (the current default), OpenAI generates BOTH the English
     # analysis and the Mongolian translation, bypassing Anthropic entirely.
-    # Intended only as a stopgap while an Anthropic workspace-id issue is
-    # resolved - flip back to false to restore the normal Claude+OpenAI split.
-    use_openai_for_analysis: bool = False
+    # The Anthropic API is not reachable for this deployment at the moment;
+    # set USE_OPENAI_FOR_ANALYSIS=false to restore the Claude+OpenAI split
+    # once it is. The AI data assistant (chat) always uses OpenAI.
+    use_openai_for_analysis: bool = True
 
     max_upload_mb: int = 15
     cors_origins: str = "http://localhost:3000"

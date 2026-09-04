@@ -1,6 +1,8 @@
 import { getToken, notifyUnauthorized } from "@/lib/auth";
 import type {
   AuthUser,
+  ChatRequest,
+  ChatResponse,
   DatasetResponse,
   DriverAnalysisResponse,
   FilterSpec,
@@ -150,4 +152,12 @@ export function sampleDownloadUrl(): string {
 
 export function fetchForecast(uploadId: string, req: ForecastRequest, signal?: AbortSignal): Promise<ForecastResponse> {
   return request<ForecastResponse>(`/api/forecast/${uploadId}`, jsonInit("POST", req, signal));
+}
+
+// ---------------------------------------------------------------------------
+// AI data assistant
+// ---------------------------------------------------------------------------
+
+export function fetchChatAnswer(uploadId: string, req: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> {
+  return request<ChatResponse>(`/api/chat/${uploadId}`, jsonInit("POST", req, signal));
 }

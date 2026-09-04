@@ -480,3 +480,42 @@ class RoleUpdateRequest(BaseModel):
 
 class UserListResponse(BaseModel):
     users: List[UserPublic] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# AI data assistant (chat over the uploaded dataset)
+# ---------------------------------------------------------------------------
+
+ChatRole = Literal["user", "assistant"]
+
+
+class ChatMessage(BaseModel):
+    role: ChatRole
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class ChatRequest(BaseModel):
+    """The conversation so far (last message from the user), the UI language
+    and the dashboard's active filter, which the assistant uses as its default
+    scope."""
+    messages: List[ChatMessage] = Field(min_length=1, max_length=40)
+    locale: Literal["mn", "en"] = "mn"
+    filters: FilterSpec = Field(default_factory=FilterSpec)
+    module: Literal["drivers", "forecast"] = "drivers"
+
+
+class ChatToolCall(BaseModel):
+    name: str
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatMeta(BaseModel):
+    mock_ai: bool
+    model: str
+    tool_rounds: int
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    tool_calls: List[ChatToolCall] = Field(default_factory=list)
+    meta: ChatMeta

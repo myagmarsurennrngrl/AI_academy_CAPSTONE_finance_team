@@ -504,6 +504,42 @@ export const STRINGS = {
   "admin.passwordUpdated": { mn: "“{name}” хэрэглэгчийн нууц үг шинэчлэгдлээ.", en: "Password for “{name}” updated." },
   "admin.userDeleted": { mn: "“{name}” хэрэглэгч устгагдлаа.", en: "User “{name}” deleted." },
 
+  // AI data assistant (chat)
+  "chat.open": { mn: "AI туслах", en: "Ask the data" },
+  "chat.title": { mn: "AI туслах", en: "Data assistant" },
+  "chat.subtitle": { mn: "Зөвхөн оруулсан Excel файлын өгөгдлөөс хариулна", en: "Answers only from the uploaded Excel data" },
+  "chat.scope": { mn: "Хамрах хүрээ", en: "Scope" },
+  "chat.scope.all": { mn: "Бүх өгөгдөл", en: "Full dataset" },
+  "chat.intro": {
+    mn: "Оруулсан файлын тоон мэдээллийн талаар асуулт асуугаарай. Бүх тоог Python тооцоолж, AI зөвхөн тайлбарладаг.",
+    en: "Ask about the numbers in the uploaded file. Every figure is computed in Python; the AI only explains it.",
+  },
+  "chat.placeholder": { mn: "Асуултаа бичнэ үү… (Enter – илгээх)", en: "Ask a question… (Enter to send)" },
+  "chat.send": { mn: "Илгээх", en: "Send" },
+  "chat.thinking": { mn: "Өгөгдлөөс тооцоолж байна…", en: "Computing from the data…" },
+  "chat.error": { mn: "Хариулт авч чадсангүй.", en: "Could not get an answer." },
+  "chat.errorNetwork": { mn: "Сервертэй холбогдож чадсангүй. Backend ажиллаж байгаа эсэхийг шалгана уу.", en: "Could not reach the server. Check that the backend is running." },
+  "chat.retry": { mn: "Дахин оролдох", en: "Retry" },
+  "chat.clear": { mn: "Яриаг цэвэрлэх", en: "Clear conversation" },
+  "chat.close": { mn: "Хаах", en: "Close" },
+  "chat.computed": { mn: "{n} тооцоолол хийсэн", en: "{n} data queries" },
+  "chat.mock": { mn: "Туршилтын AI", en: "Mock AI" },
+  "chat.disclaimer": {
+    mn: "Хариулт зөвхөн оруулсан файлын өгөгдөлд тулгуурлана. Шийдвэр гаргахын өмнө тоог хянана уу.",
+    en: "Answers are based only on the uploaded file. Verify figures before relying on them.",
+  },
+  "chat.suggest.yoy": {
+    mn: "{product} бүтээгдэхүүний борлуулалт {year} онд өмнөх оноос хэдэн хувиар өссөн бэ?",
+    en: "How much did sales of {product} grow in {year} versus the previous year?",
+  },
+  "chat.suggest.mom": {
+    mn: "{product}-ийн {month} сарын цэвэр борлуулалт өмнөх сараас хэдэн хувиар өөрчлөгдсөн бэ?",
+    en: "How did net sales of {product} in {month} change versus the previous month?",
+  },
+  "chat.suggest.channel": { mn: "Аль суваг хамгийн их цэвэр борлуулалт хийсэн бэ?", en: "Which channel had the highest net sales?" },
+  "chat.suggest.margin": { mn: "Брэнд бүрийн нийт ашгийн маржин хэд вэ?", en: "What is the gross margin by brand?" },
+  "chat.suggest.forecast": { mn: "Дараагийн 3 сарын цэвэр борлуулалтын таамаглал хэд вэ?", en: "What is the net sales forecast for the next 3 months?" },
+
   // Driver labels
   "driver.sale_price": { mn: "Нэгжийн үнэ", en: "Unit price" },
   "driver.sale_price_net": { mn: "Цэвэр үнэ", en: "Net price" },
