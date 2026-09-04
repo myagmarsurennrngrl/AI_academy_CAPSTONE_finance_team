@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, UploadCloud, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Sparkles, UploadCloud, X } from "lucide-react";
 import { useLocale } from "@/components/providers/LocaleProvider";
 import { Badge, Button, Spinner, Surface, Table, TBody, TD, TH, THead, TR, buttonClasses } from "@/components/ui/primitives";
 import type { DatasetState } from "@/hooks/useDataset";
@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 interface Props {
   state: DatasetState;
   onFile: (file: File) => void;
+  /** load the bundled sample workbook instead of uploading a file */
+  onSample?: () => void;
   onOpen: () => void;
   onReset: () => void;
 }
@@ -42,7 +44,7 @@ const OPTIONAL: { field: string; mn: string; en: string }[] = [
   { field: "sale_price_net", mn: "Хөнгөлөлтийн дараах нэгж үнэ", en: "Net unit price after discount" },
 ];
 
-export function UploadScreen({ state, onFile, onOpen, onReset }: Props) {
+export function UploadScreen({ state, onFile, onSample, onOpen, onReset }: Props) {
   const { t, locale } = useLocale();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [drag, setDrag] = React.useState(false);
@@ -92,10 +94,19 @@ export function UploadScreen({ state, onFile, onOpen, onReset }: Props) {
               </button>
             </p>
             <p className="mt-1 text-xs text-ink-400">{t("upload.formats")}</p>
-            <a href={sampleDownloadUrl()} download className={buttonClasses("secondary", "sm", "mt-5")}>
-              <Download className="h-3.5 w-3.5" />
-              {t("upload.sample")}
-            </a>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+              {onSample && (
+                <Button variant="secondary" size="sm" onClick={onSample} data-testid="try-sample">
+                  <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+                  {t("upload.trySample")}
+                </Button>
+              )}
+              <a href={sampleDownloadUrl()} download className={buttonClasses("ghost", "sm")}>
+                <Download className="h-3.5 w-3.5" />
+                {t("upload.sample")}
+              </a>
+            </div>
+            {onSample && <p className="mt-2 max-w-sm text-xs leading-relaxed text-ink-400">{t("upload.trySample.hint")}</p>}
             <input
               ref={inputRef}
               type="file"

@@ -127,6 +127,12 @@ export function uploadExcel(file: File): Promise<UploadResponse> {
   return request<UploadResponse>("/api/upload", { method: "POST", body: formData });
 }
 
+/** Registers the backend's bundled sample workbook as an upload - "try it
+ *  without your own data" on phones and laptops alike. */
+export function loadSampleUpload(): Promise<UploadResponse> {
+  return request<UploadResponse>("/api/upload/sample", { method: "POST" });
+}
+
 export function fetchDataset(uploadId: string): Promise<DatasetResponse> {
   return request<DatasetResponse>(`/api/dataset/${uploadId}`);
 }

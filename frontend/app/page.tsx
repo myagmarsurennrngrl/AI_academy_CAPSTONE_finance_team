@@ -12,16 +12,17 @@ import { useAuth } from "@/components/providers/AuthProvider";
 import { useLocale } from "@/components/providers/LocaleProvider";
 import { Badge, Spinner } from "@/components/ui/primitives";
 import { UploadScreen } from "@/components/upload/UploadScreen";
-import { useDataset } from "@/hooks/useDataset";
+import { SAMPLE_FILE_NAME, useDataset } from "@/hooks/useDataset";
 import type { AppModule } from "@/types";
 
 export default function HomePage() {
   const { t } = useLocale();
   const { ready, user, logout } = useAuth();
-  const { state, uploadFile, reset } = useDataset();
+  const { state, uploadFile, loadSample, reset } = useDataset();
   const [module, setModule] = React.useState<AppModule | null>(null);
   const [opened, setOpened] = React.useState(false);
   const [adminOpen, setAdminOpen] = React.useState(false);
+  const [sampleLoading, setSampleLoading] = React.useState(false);
 
   // Signing out (or losing the session) drops the loaded dataset and returns
   // to the module chooser: the next person at this browser must not see the
@@ -43,6 +44,16 @@ export default function HomePage() {
     reset();
     setOpened(false);
   };
+  // "Try with sample data": no upload needed. Inside a module the dashboard
+  // opens as soon as the sample is ready; on the home screen the loaded file
+  // is shown and the next module click opens it.
+  const trySample = async () => {
+    setSampleLoading(true);
+    const ok = await loadSample();
+    setSampleLoading(false);
+    if (ok) setOpened(true);
+  };
+  const sampleError = state.status === "error" && state.fileName === SAMPLE_FILE_NAME && state.errorKey ? t(state.errorKey) : null;
   const goHome = () => {
     setModule(null);
     setAdminOpen(false);
@@ -102,6 +113,9 @@ export default function HomePage() {
             }}
             dataset={datasetReady && state.dataset ? { filename: state.dataset.filename, rows: state.dataset.row_count } : null}
             onNewFile={datasetReady ? handleNewFile : undefined}
+            onTrySample={trySample}
+            sampleLoading={sampleLoading}
+            sampleError={sampleError}
           />
         ) : showModule && state.dataset ? (
           module === "drivers" ? (
@@ -117,7 +131,7 @@ export default function HomePage() {
                 {t(`home.${module}.title` as "home.drivers.title")}
               </Badge>
             </div>
-            <UploadScreen state={state} onFile={uploadFile} onOpen={() => setOpened(true)} onReset={handleNewFile} />
+            <UploadScreen state={state} onFile={uploadFile} onSample={trySample} onOpen={() => setOpened(true)} onReset={handleNewFile} />
           </>
         )}
       </main>

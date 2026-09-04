@@ -78,6 +78,25 @@ def test_insight_rejects_empty_selection(client):
     assert response.status_code == 400
 
 
+def test_sample_upload_registers_bundled_file(client):
+    """'Try with sample data' - no file leaves the browser, the backend loads its own sample."""
+    response = client.post("/api/upload/sample")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["filename"] == "sample_data.xlsx"
+    assert body["can_analyze"] is True
+    assert body["file_size_bytes"] > 0
+    ds = client.get(f"/api/dataset/{body['upload_id']}")
+    assert ds.status_code == 200
+    assert ds.json()["row_count"] == 2768
+
+
+def test_sample_upload_requires_login(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "auth_disabled", False)
+    assert TestClient(app).post("/api/upload/sample").status_code == 401
+
+
 def test_unknown_upload_is_404(client):
     assert client.get("/api/dataset/doesnotexist").status_code == 404
     assert client.post("/api/analysis/doesnotexist/drivers", json={}).status_code == 404

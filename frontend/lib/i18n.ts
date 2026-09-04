@@ -27,6 +27,11 @@ export const STRINGS = {
   "upload.browse": { mn: "файл сонгох", en: "browse" },
   "upload.formats": { mn: "Дэмжигдэх формат: .xlsx, .xls · 15 MB хүртэл", en: "Supported: .xlsx, .xls · up to 15 MB" },
   "upload.sample": { mn: "Жишээ файл татах", en: "Download sample file" },
+  "upload.trySample": { mn: "Жишээ өгөгдлөөр туршиж үзэх", en: "Try with sample data" },
+  "upload.trySample.hint": {
+    mn: "Өөрийн файл байхгүй бол жишээ борлуулалтын өгөгдлийг шууд ачаалж, бүх функцийг утас болон компьютерээс туршиж болно.",
+    en: "No file at hand? Load the sample sales data and explore every feature from your phone or laptop.",
+  },
   "upload.processing": { mn: "Файлыг уншиж байна…", en: "Reading file…" },
   "upload.preparing": { mn: "Өгөгдлийг бэлтгэж байна…", en: "Preparing dataset…" },
   "upload.ready": { mn: "Шинжилгээнд бэлэн", en: "Ready for analysis" },
@@ -334,6 +339,11 @@ export const STRINGS = {
   "home.lead": { mn: "Модулиа сонгоод борлуулалтын Excel файлаа оруулна уу. Нэг файлыг хоёр модульд ашиглаж болно.", en: "Pick a module, then upload your sales Excel file. One file can be used by both modules." },
   "home.open": { mn: "Эхлэх", en: "Start" },
   "home.continueWith": { mn: "энэ файлаар үргэлжлүүлнэ", en: "will continue with this file" },
+  "home.trySample": { mn: "Өгөгдөл оруулахгүйгээр жишээ файлаар туршиж үзэх", en: "Try it with sample data - no upload needed" },
+  "home.trySample.hint": {
+    mn: "Жишээ борлуулалтын файл ачаалагдаж, дараа нь дээрх хоёр модулийн аль нэгийг сонгоод шууд үзнэ.",
+    en: "Loads a sample sales file; then pick either module above to explore it right away.",
+  },
   "home.drivers.title": { mn: "Борлуулалтын хүчин зүйл", en: "Sales drivers" },
   "home.drivers.desc": {
     mn: "Юу болсон, хэзээ, хаана, яагаад: KPI, чиг хандлага, суваг · брэнд · бүтээгдэхүүний бүтэц, борлуулалтад нөлөөлсөн хүчин зүйлсийн статистик, AI дүгнэлт ба удирдлагын зөвлөмж.",

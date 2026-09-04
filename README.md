@@ -204,6 +204,9 @@ Signing out clears the loaded dataset from the page.
 
 1. Drop an `.xlsx` (or download the sample). The file is parsed, validated and profiled in about
    a second - rows, period, months, brands, products, channels, recognised / missing columns.
+   No data at hand (or on a phone)? **Try with sample data** on the home or upload screen asks the
+   backend to register its bundled workbook (`POST /api/upload/sample`) - nothing to upload, and
+   both modules open on it immediately.
 2. **Open dashboard.** KPIs and charts appear immediately from the row-level dataset; the driver
    model loads in the background; the AI narrative is generated once for the full dataset.
 3. Filter by **Period · Brand · Product · Channel · Channel type · Sales type**. Every KPI, chart
